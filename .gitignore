@@ -1,3 +1,9 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
 # KiCad
 *-backups/
 *.kicad_prl
@@ -8,9 +14,20 @@ fp-info-cache
 *.kicad_pcb-bak
 ~*
 
-# Fertigungs-Output (wird generiert)
+# Fertigungs-Output: wird von hardware/gen/release.sh erzeugt.
+# Die Quelle ist der Generator, nicht das Ergebnis — Gerber und Renderings
+# werden reproduzierbar neu gebaut und gehören nicht ins Repo.
+ZETTEL3090_FINAL/
 hardware/production/
 *.gbr
+*.gbl
+*.gtl
+*.gts
+*.gbs
+*.gto
+*.gbo
+*.gm1
+*.gbrjob
 *.drl
 *.zip
 
