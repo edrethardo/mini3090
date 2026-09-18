@@ -1,0 +1,20 @@
+# KiCad
+*-backups/
+*.kicad_prl
+*.kicad_pro.lck
+fp-info-cache
+*.bak
+*.kicad_sch-bak
+*.kicad_pcb-bak
+~*
+
+# Fertigungs-Output (wird generiert)
+hardware/production/
+*.gbr
+*.drl
+*.zip
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/
