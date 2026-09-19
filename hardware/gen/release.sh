@@ -49,7 +49,25 @@ for S in 01 02; do
       --report-path "$OUT/verification/drill_report_${S}.txt" \
       -o "$DIR/gerbers/" "$PCB" > /dev/null
 
-  ( cd "$DIR/gerbers" && zip -q -r "../ZETTEL3090_${S}_of_02_gerbers.zip" . )
+  # The drill MAP is documentation (a plot of drill symbols plus a legend
+  # table). Fabs read the .drl; an online viewer renders the map as a bogus
+  # extra layer covering the board. It stays in gerbers/ as a reference and
+  # out of the ZIP that gets uploaded.
+  #
+  # The file list is explicit: with `zip *.gbr -x '*-drl_map.gbr'` the shell
+  # expands the glob first and zip's exclude no longer matches, so the maps
+  # end up in the archive anyway.
+  ( cd "$DIR/gerbers" && zip -q "../ZETTEL3090_${S}_of_02_gerbers.zip" \
+      "ZETTEL3090_${S}-F_Cu.gbr" \
+      "ZETTEL3090_${S}-B_Cu.gbr" \
+      "ZETTEL3090_${S}-F_Mask.gbr" \
+      "ZETTEL3090_${S}-B_Mask.gbr" \
+      "ZETTEL3090_${S}-F_Silkscreen.gbr" \
+      "ZETTEL3090_${S}-B_Silkscreen.gbr" \
+      "ZETTEL3090_${S}-Edge_Cuts.gbr" \
+      "ZETTEL3090_${S}-PTH.drl" \
+      "ZETTEL3090_${S}-NPTH.drl" \
+      "ZETTEL3090_${S}-job.gbrjob" )
   cp "$DIR/gerbers"/*.drl "$DIR/" 2>/dev/null || true
 
   echo "==> board $S/02: renders"
