@@ -9,8 +9,9 @@ das Projekt, das lokal mit NVIDIA Nemotron 3.5 auf einer RTX 3090 lief.
 
     RTX 3090 → Nemotron 3.5 → Zettel → GTC Berlin 2026
 
-Zwei physisch identische Platinen, `01/02` und `02/02`, jeweils auf Vorder-
-und Rückseite nummeriert.
+Drei physisch identische Platinen, `01/03`, `02/03` und `03/03`, jeweils auf
+Vorder- und Rückseite nummeriert. Die Auflagengröße steht an genau einer
+Stelle — `SERIALS` in `hardware/gen/release.sh`.
 
 ## Das Wichtigste
 
@@ -49,7 +50,7 @@ Für eine schnelle Design-Iteration ohne den vollen Export:
 
 ## Ergebnis
 
-`ZETTEL3090_FINAL/` — Quellen, zwei Gerber-Pakete, Vorschaubilder,
+`ZETTEL3090_FINAL/` — Quellen, drei Gerber-Pakete, Vorschaubilder,
 Prüfprotokolle und `ORDER_README.md` mit den exakten Herstelleroptionen.
 
 ## Aufbau des Generators

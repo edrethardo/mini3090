@@ -1,6 +1,6 @@
 # ZETTEL3090 — Bestellung
 
-Zwei dekorative, unbestückte Platinen. Optisch eine Miniatur einer
+Drei dekorative, unbestückte Platinen. Optisch eine Miniatur einer
 RTX-3090-Platine; die Rückseite trägt die Berliner Skyline in vergoldetem
 Kupfer und einen scanbaren QR-Code auf das Projekt.
 
@@ -27,7 +27,7 @@ Beim Hersteller (PCBWay, JLCPCB, Aisler, …) exakt so einstellen:
 | Bestückungsdruck | **Weiß** |
 | Oberfläche | **ENIG (chemisch Gold)** — nicht HASL |
 | Bestückung | **keine** (unbestückte Platine) |
-| Stückzahl | **je 5** (Mindestmenge; gebraucht werden 2, je 1 pro Design) |
+| Stückzahl | **je 5** (Mindestmenge; gebraucht werden 3, je 1 pro Design) |
 | Goldfinger / abgeschrägte Kante | **nein** (nicht nötig, die Kontakte sind dekorativ) |
 | Sondertext / Fertigungsnummer | **nein** bzw. „auf Rückseite unterdrücken" |
 
@@ -42,16 +42,17 @@ druckt der Hersteller eine Auftragsnummer mitten in die Skyline.
 
 ## 2. Welches ZIP für welche Platine
 
-Die beiden Designs sind **physisch identisch** bis auf die Seriennummer, die
+Die drei Designs sind **physisch identisch** bis auf die Seriennummer, die
 jeweils auf Vorder- **und** Rückseite steht.
 
 | Platine | Datei | Aufdruck |
 |---|---|---|
-| 1 von 2 | `board_01_of_02/ZETTEL3090_01_of_02_gerbers.zip` | `01/02` |
-| 2 von 2 | `board_02_of_02/ZETTEL3090_02_of_02_gerbers.zip` | `02/02` |
+| 1 von 3 | `board_01_of_03/ZETTEL3090_01_of_03_gerbers.zip` | `01/03` |
+| 2 von 3 | `board_02_of_03/ZETTEL3090_02_of_03_gerbers.zip` | `02/03` |
+| 3 von 3 | `board_03_of_03/ZETTEL3090_03_of_03_gerbers.zip` | `03/03` |
 
-Das sind **zwei getrennte Bestellpositionen**. Ein ZIP hochladen, bestellen,
-dann das zweite ZIP als neue Position hochladen. Beide ZIPs enthalten bereits
+Das sind **drei getrennte Bestellpositionen**. Ein ZIP hochladen, bestellen,
+dann das nächste ZIP als neue Position hochladen. Alle ZIPs enthalten bereits
 die Bohrdateien; separat hochladen ist nicht nötig.
 
 ## 3. Inhalt der ZIP-Dateien
@@ -85,8 +86,9 @@ die **exportierten Daten**, nicht die Absicht des Generators:
 - keine Bohrung, kein Bestückungsdruck innerhalb des QR-Symbols
 - Rückseiten-Text ist im Board gespiegelt abgelegt und liest sich von der
   Rückseite betrachtet korrekt
-- Seriennummer auf Vorder- und Rückseite derselben Platine, keine Reste der
+- Seriennummer auf Vorder- und Rückseite derselben Platine, keine Reste einer
   anderen Nummer
+- Anzahl der Pakete stimmt mit der aufgedruckten Auflagengröße überein
 - Goldflächen bleiben unter 50 % der Platinenfläche — Schwarz dominiert
 
 ### Zur DRC

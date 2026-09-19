@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 # Rebuild one board's upload ZIP from the already-exported Gerbers.
 # Same file list as release.sh, without re-running the whole export.
+#
+#   ./rezip.sh 03           # edition size is read from the directory name
 set -euo pipefail
 S=${1:-01}
-DIR="/data/projects/mini3090/ZETTEL3090_FINAL/board_${S}_of_02"
-ZIP="$DIR/ZETTEL3090_${S}_of_02_gerbers.zip"
+ROOT="/data/projects/mini3090/ZETTEL3090_FINAL"
+DIR=$(echo "$ROOT/board_${S}_of_"*)
+if [ ! -d "$DIR" ]; then
+  echo "no board directory for serial $S under $ROOT" >&2
+  exit 1
+fi
+TOTAL=${DIR##*_of_}
+ZIP="$DIR/ZETTEL3090_${S}_of_${TOTAL}_gerbers.zip"
 
 rm -f "$ZIP"
 cd "$DIR/gerbers"

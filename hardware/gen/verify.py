@@ -10,7 +10,8 @@ files, renders), not the generator's own beliefs.
   4. the QR quiet zone contains no foreign copper/silk (checked against the
      exported B.Cu / B.Silkscreen / B.Mask Gerbers, not the render)
   5. B.Silkscreen text is NOT mirrored when viewed from the back
-  6. both serial numbers appear on their own board, front and back
+  6. every serial number appears on its own board, front and back, and no
+     other board's number appears on it
   7. solder mask openings stay a minority of the board area (black dominates)
 """
 
@@ -215,18 +216,26 @@ def check_back_text_orientation(pcb: Path, serial: str):
           + (f": {wrong[:3]}" if wrong else ""))
 
 
-def check_serial_text(pcb: Path, serial: str):
+def check_serial_text(pcb: Path, serial: str, total: str, all_serials):
+    """The board must carry its OWN number — and nobody else's.
+
+    A stale artefact from an earlier run is the realistic failure here: the
+    stray-number check therefore tests against every other serial in the
+    edition, not just one hardcoded sibling.
+    """
     src = pcb.read_text()
-    tag = f"{serial}/02"
+    tag = f"{serial}/{total}"
     blocks = re.findall(r'\(gr_text\s+"([^"]*)"(.*?)\n\t\)', src, re.S)
     front = any(t == tag and "F." in b for (t, b) in blocks)
     back = any(t == tag and "B.SilkS" in b for (t, b) in blocks)
     # the front serial is gold: copper + mask, so it appears on F.Cu/F.Mask
     check(f"{serial}: serial {tag} on the front", front)
     check(f"{serial}: serial {tag} on the back", back)
-    other = "02" if serial == "01" else "01"
-    check(f"{serial}: no stray {other}/02 on this board",
-          not any(t == f"{other}/02" for (t, _) in blocks))
+    strays = sorted({t for (t, _) in blocks
+                     for other in all_serials if other != serial
+                     and t == f"{other}/{total}"})
+    check(f"{serial}: no stray serial of another board", not strays,
+          ", ".join(strays) if strays else f"checked {len(all_serials) - 1} others")
     for needle in ("NEMOTRON 3.5", "GTC BERLIN 2026", "ZETTEL"):
         check(f"{serial}: text '{needle}' present",
               any(needle in t for (t, _) in blocks))
@@ -246,14 +255,42 @@ def check_drc(report: Path, serial: str):
           f"{fp_err.group(1) if fp_err else '?'} footprint errors")
 
 
+def discover_boards(out: Path):
+    """Find which boards this package actually contains.
+
+    Hardcoding ("01", "02") made the verifier silently ignore a third board:
+    it would pass while board 03 went unchecked. The directory names carry
+    both the serial and the edition size, so they are the source of truth.
+    """
+    boards = []
+    for d in sorted(out.glob("board_*_of_*")):
+        m = re.fullmatch(r"board_(\d+)_of_(\d+)", d.name)
+        if m:
+            boards.append((m.group(1), m.group(2)))
+    return boards
+
+
 def main():
     out = Path(sys.argv[1])
     print("ZETTEL3090 — production verification")
     print("=" * 60)
 
-    for serial in ("01", "02"):
-        print(f"\n--- board {serial}/02 " + "-" * 40)
-        gdir = out / f"board_{serial}_of_02" / "gerbers"
+    boards = discover_boards(out)
+    if not check("package contains at least one board", bool(boards),
+                 ", ".join(s for (s, _) in boards) or "no board_* directories"):
+        sys.exit(1)
+    totals = {t for (_, t) in boards}
+    check("all boards agree on the edition size", len(totals) == 1,
+          ", ".join(sorted(totals)))
+    total = boards[0][1]
+    check(f"board count matches the printed edition size /{total}",
+          len(boards) == int(total),
+          f"{len(boards)} boards, marking says {int(total)}")
+    all_serials = [s for (s, _) in boards]
+
+    for serial in all_serials:
+        print(f"\n--- board {serial}/{total} " + "-" * 40)
+        gdir = out / f"board_{serial}_of_{total}" / "gerbers"
         pcb = out / "source" / f"ZETTEL3090_{serial}.kicad_pcb"
         stats = json.loads((out / "verification" /
                             f"board_{serial}_stats.json").read_text())
@@ -268,8 +305,9 @@ def main():
         check_render_gold(out / "preview" / f"board_{serial}_back.png",
                           serial, "back")
         check_back_text_orientation(pcb, serial)
-        check_serial_text(pcb, serial)
-        zipf = out / f"board_{serial}_of_02" / f"ZETTEL3090_{serial}_of_02_gerbers.zip"
+        check_serial_text(pcb, serial, total, all_serials)
+        zipf = (out / f"board_{serial}_of_{total}" /
+                f"ZETTEL3090_{serial}_of_{total}_gerbers.zip")
         check(f"{serial}: gerber zip exists", zipf.exists() and
               zipf.stat().st_size > 5000,
               f"{zipf.stat().st_size // 1024} KB" if zipf.exists() else "missing")

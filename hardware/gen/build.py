@@ -14,7 +14,11 @@ Colours are part of the deliverable: black solder mask, white silkscreen,
 ENIG gold. These are written into the board stackup so `kicad-cli pcb render`
 shows the real thing rather than KiCad's green default.
 
-Usage:  python3 build.py --serial 01 --out /path/ZETTEL3090_01.kicad_pcb
+Usage:  python3 build.py --serial 01 --total 03 --out /path/ZETTEL3090_01.kicad_pcb
+
+`--serial` / `--total` produce the "01/03" marking that appears in gold on the
+front and in silkscreen on the back. The edition size lives in exactly one
+place per run; nothing downstream hardcodes it.
 """
 
 from __future__ import annotations
@@ -261,7 +265,7 @@ def site(ref, fallback=None):
 # front side
 # ==========================================================================
 
-def build_front(board, serial, rng):
+def build_front(board, serial, total, rng):
     cx, cy = L.GPU_CX, L.GPU_CY
     half = L.GPU_SUB / 2.0
 
@@ -339,7 +343,7 @@ def build_front(board, serial, rng):
     build_display_area(board, rng)
 
     # --- quiet branding area (claims its block before the filler runs) ---
-    build_branding(board, serial)
+    build_branding(board, serial, total)
 
     # --- scattered detail: discretes, test points, small ICs -------------
     build_front_detail(board, rng)
@@ -548,7 +552,7 @@ def fill_density(board, rng):
     return vias, placed, back_placed
 
 
-def build_branding(board, serial):
+def build_branding(board, serial, total):
     """Quiet, high-value branding block on the right front side.
 
     Vertical rhythm is fixed here so nothing collides: rule, wordmark, rule,
@@ -572,7 +576,7 @@ def build_branding(board, serial):
     text(board, F_SILK, "NEMOTRON 3.5", cx, 27.0, 1.45, 0.23)
     text(board, F_SILK, "GTC BERLIN 2026", cx, 29.9, 1.45, 0.23)
 
-    gold_text(board, False, f"{serial}/02", cx, 34.2, 2.6, 0.42)
+    gold_text(board, False, f"{serial}/{total}", cx, 34.2, 2.6, 0.42)
     text(board, F_SILK, "RTX 3090   .   LOCAL   .   24 GB", cx, 36.8, 0.85, 0.15)
 
 
@@ -580,7 +584,7 @@ def build_branding(board, serial):
 # back side
 # ==========================================================================
 
-def build_back(board, serial, rng):
+def build_back(board, serial, total, rng):
     """Back side: a technical GPU backside whose centre resolves into Berlin.
 
     Everything is kept OUT of two bands: the skyline band and the QR keepout.
@@ -644,7 +648,7 @@ def build_back(board, serial, rng):
     # Reserve the back branding block so the filler scatter stays out of it.
     reserve(L.QR_CENTER[0], 9.5, 22.0, 4.6, True)
     text(board, B_SILK, "ZETTEL", L.QR_CENTER[0], 8.4, 2.0, 0.3)
-    text(board, B_SILK, f"{serial}/02", L.QR_CENTER[0], 10.6, 1.3, 0.24)
+    text(board, B_SILK, f"{serial}/{total}", L.QR_CENTER[0], 10.6, 1.3, 0.24)
     text(board, B_SILK, "NEMOTRON 3.5   .   GTC BERLIN 2026", 47.0,
          L.SKY_BASE + 2.2, 1.0, 0.18)
     return info
@@ -683,6 +687,8 @@ def apply_stackup_and_rules(board):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--serial", required=True, help='e.g. "01"')
+    ap.add_argument("--total", default="03",
+                    help='edition size printed after the slash, e.g. "03"')
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=30902026)
     ap.add_argument("--info", default="")
@@ -706,8 +712,8 @@ def main():
     build_outline(board)
     build_card_edge(board)
     place_packages(board, rng)
-    build_front(board, args.serial, rng)
-    qr_info = build_back(board, args.serial, rng)
+    build_front(board, args.serial, args.total, rng)
+    qr_info = build_back(board, args.serial, args.total, rng)
     vias, front_chips, back_chips = fill_density(board, rng)
 
     pcbnew.SaveBoard(args.out, board)
@@ -715,6 +721,7 @@ def main():
     fps = list(board.GetFootprints())
     stats = {
         "serial": args.serial,
+        "total": args.total,
         "out": args.out,
         "footprints": len(fps),
         "pads": len(list(board.GetPads())),
