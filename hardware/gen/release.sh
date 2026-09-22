@@ -78,15 +78,15 @@ for S in "${SERIALS[@]}"; do
   cp "$DIR/gerbers"/*.drl "$DIR/" 2>/dev/null || true
 
   echo "==> board $S/$TOTAL: renders"
-  kicad-cli pcb render --side top    -o "$OUT/preview/board_${S}_front_3d.png" \
+  kicad-cli pcb render --use-board-stackup-colors --side top    -o "$OUT/preview/board_${S}_front_3d.png" \
       -w 3000 --height 1400 --quality high --zoom 1.1 --rotate '-20,0,0' \
       --perspective "$PCB" > /dev/null
-  kicad-cli pcb render --side bottom -o "$OUT/preview/board_${S}_back_3d.png" \
+  kicad-cli pcb render --use-board-stackup-colors --side bottom -o "$OUT/preview/board_${S}_back_3d.png" \
       -w 3000 --height 1400 --quality high --zoom 1.1 --rotate '-20,0,0' \
       --perspective "$PCB" > /dev/null
-  kicad-cli pcb render --side top    -o "$OUT/preview/board_${S}_front.png" \
+  kicad-cli pcb render --use-board-stackup-colors --side top    -o "$OUT/preview/board_${S}_front.png" \
       -w 4400 --height 2000 --quality high --zoom 1.15 "$PCB" > /dev/null
-  kicad-cli pcb render --side bottom -o "$OUT/preview/board_${S}_back.png" \
+  kicad-cli pcb render --use-board-stackup-colors --side bottom -o "$OUT/preview/board_${S}_back.png" \
       -w 4400 --height 2000 --quality high --zoom 1.15 "$PCB" > /dev/null
 done
 

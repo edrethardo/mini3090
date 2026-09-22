@@ -15,9 +15,9 @@ mkdir -p "$OUT"
     --out "$OUT/t.kicad_pcb" --info "$OUT/stats.json" >/dev/null
 "$PY" "$GEN/stackup.py" "$OUT/t.kicad_pcb" >/dev/null
 
-kicad-cli pcb render --side top    -o "$OUT/f_hi.png" -w 4400 --height 2000 \
+kicad-cli pcb render --use-board-stackup-colors --side top    -o "$OUT/f_hi.png" -w 4400 --height 2000 \
     --quality high --zoom 1.15 "$OUT/t.kicad_pcb" >/dev/null
-kicad-cli pcb render --side bottom -o "$OUT/b_hi.png" -w 4400 --height 2000 \
+kicad-cli pcb render --use-board-stackup-colors --side bottom -o "$OUT/b_hi.png" -w 4400 --height 2000 \
     --quality high --zoom 1.15 "$OUT/t.kicad_pcb" >/dev/null
 
 "$PY" - "$OUT" <<'EOF'
