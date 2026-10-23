@@ -2,6 +2,19 @@
 
 **English** · [Deutsch](README.de.md)
 
+![ZETTEL3090 — front](docs/images/front_3d.jpg)
+
+| Front | Back |
+|---|---|
+| ![front](docs/images/front.jpg) | ![back](docs/images/back.jpg) |
+
+**3D:** [view in colour (3dviewer.net)](https://3dviewer.net/#model=https://raw.githubusercontent.com/edrethardo/mini3090/main/docs/3d/ZETTEL3090.glb) ·
+[GitHub 3D viewer (geometry only)](docs/3d/ZETTEL3090.stl) ·
+[back side, angled](docs/images/back_3d.jpg)
+
+All images and models are rendered/exported by KiCad from the generated board
+(`hardware/gen/readme_media.sh`), like the fabrication data.
+
 A decorative miniature circuit board in the style of an RTX 3090, made as a
 gift for Jensen Huang at NVIDIA GTC Berlin 2026.
 
@@ -95,6 +108,7 @@ hardware/gen/
   docs/          PCBWay order settings and manufacturing notes (English)
   release.sh     The full production run
   iterate.sh     Short design loop
+  readme_media.sh  README images + 3D models (also needs Node.js/npx)
 ```
 
 ### Two design decisions that carry everything

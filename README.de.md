@@ -2,6 +2,19 @@
 
 [English](README.md) · **Deutsch**
 
+![ZETTEL3090 — Vorderseite](docs/images/front_3d.jpg)
+
+| Vorderseite | Rückseite |
+|---|---|
+| ![Vorderseite](docs/images/front.jpg) | ![Rückseite](docs/images/back.jpg) |
+
+**3D:** [farbig ansehen (3dviewer.net)](https://3dviewer.net/#model=https://raw.githubusercontent.com/edrethardo/mini3090/main/docs/3d/ZETTEL3090.glb) ·
+[GitHub-3D-Viewer (nur Geometrie)](docs/3d/ZETTEL3090.stl) ·
+[Rückseite schräg](docs/images/back_3d.jpg)
+
+Alle Bilder und Modelle rendert/exportiert KiCad aus dem generierten Board
+(`hardware/gen/readme_media.sh`), genau wie die Fertigungsdaten.
+
 Eine dekorative Miniatur-Platine im Stil einer RTX 3090, als Geschenk für
 Jensen Huang zur NVIDIA GTC Berlin 2026.
 
@@ -95,6 +108,7 @@ hardware/gen/
   docs/          PCBWay-Bestellwerte und Fertigungshinweise (Englisch)
   release.sh     Der vollständige Produktionslauf
   iterate.sh     Kurzer Design-Loop
+  readme_media.sh  Bilder + 3D-Modelle fürs README (braucht zusätzlich Node.js/npx)
 ```
 
 ### Zwei Entwurfsentscheidungen, die alles tragen
