@@ -14,9 +14,9 @@ fp-info-cache
 *.kicad_pcb-bak
 ~*
 
-# Fertigungs-Output: wird von hardware/gen/release.sh erzeugt.
-# Die Quelle ist der Generator, nicht das Ergebnis — Gerber und Renderings
-# werden reproduzierbar neu gebaut und gehören nicht ins Repo.
+# Fabrication output, produced by hardware/gen/release.sh.
+# The generator is the source, not its output — Gerbers and renders are
+# rebuilt reproducibly and do not belong in the repo.
 ZETTEL3090_FINAL/
 build/
 hardware/production/
