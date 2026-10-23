@@ -1,131 +1,136 @@
 # mini3090 — ZETTEL3090
 
-Eine dekorative Miniatur-Platine im Stil einer RTX 3090, als Geschenk für
-Jensen Huang zur NVIDIA GTC Berlin 2026.
+**English** · [Deutsch](README.de.md)
 
-Die Rückseite trägt die Berliner Skyline in vergoldetem Kupfer und einen
-scanbaren QR-Code auf [github.com/edrethardo/zettel](https://github.com/edrethardo/zettel) —
-das Projekt, das lokal mit NVIDIA Nemotron 3.5 auf einer RTX 3090 lief.
+A decorative miniature circuit board in the style of an RTX 3090, made as a
+gift for Jensen Huang at NVIDIA GTC Berlin 2026.
+
+The back carries the Berlin skyline in gold-plated copper and a scannable QR
+code pointing to [github.com/edrethardo/zettel](https://github.com/edrethardo/zettel) —
+the project that ran locally with NVIDIA Nemotron 3.5 on an RTX 3090.
 
     RTX 3090 → Nemotron 3.5 → Zettel → GTC Berlin 2026
 
-**Ein Design, ein Gerber-Satz.** Alle Platinen sind identisch; vorne steht
-nur `/03` im weißen Bestückungsdruck, davor ein freies 10 × 5 mm-Feld aus
-mattschwarzem Lötstopplack. Die Nummer (`01`, `02`, `03`) wird nach der
-Fertigung von Hand mit Lackstift eingetragen. Bei PCBWay: Different Designs 1.
-Die Auflagengröße steht an genau einer Stelle — `TOTAL` in
+**One design, one Gerber set.** All boards are identical. The front only
+shows `/03` in white silkscreen, preceded by a blank 10 × 5 mm field of matte
+black solder mask. The individual number (`01`, `02`, `03`) is written in by
+hand with a paint marker after fabrication. At PCBWay: Different Designs 1.
+The edition size lives in exactly one place — `TOTAL` in
 `hardware/gen/release.sh`.
 
-## Das Wichtigste
+## The key idea
 
-Die Platine wird **generiert, nicht gezeichnet**: Python baut mit KiCads
-eigener `pcbnew`-API ein echtes `.kicad_pcb`, und `kicad-cli` exportiert
-daraus Gerber, Bohrdateien und die Vorschaubilder. Es gibt keine handgemalten
-Gerber und keine gerenderten Bilder, die etwas zeigen, das im Layout nicht
-steht.
+The board is **generated, not drawn**: Python uses KiCad's own `pcbnew` API to
+build a real `.kicad_pcb`, and `kicad-cli` exports the Gerbers, drill files and
+preview images from it. There are no hand-made Gerbers and no renders showing
+anything that is not in the layout.
 
 | | |
 |---|---|
-| Format | 110 × 48 mm, 2 Lagen, FR-4 1,6 mm |
-| Oberfläche | ENIG — die Skyline ist echtes vergoldetes Kupfer |
-| Farben | schwarzer Lötstopplack, weißer Bestückungsdruck |
-| Funktion | keine. Kein Schaltplan, keine Netzliste, kein Bauteil. |
+| Size | 110 × 48 mm, 2 layers, FR-4 1.6 mm |
+| Surface finish | ENIG — the skyline is real gold-plated copper |
+| Colours | black solder mask, white silkscreen |
+| Function | none. No schematic, no netlist, no components. |
 
-## Bauen
+## Building
 
-Voraussetzungen:
+Requirements:
 
-- **KiCad 9** mit `kicad-cli` und den `pcbnew`-Python-Bindings
+- **KiCad 9** with `kicad-cli` and the `pcbnew` Python bindings
   (Ubuntu/Debian: `sudo add-apt-repository ppa:kicad/kicad-9.0-releases &&
-  sudo apt install kicad`; andere Systeme: [kicad.org/download](https://www.kicad.org/download/))
-- `python3` mit `venv`, `bash`, `zip`
+  sudo apt install kicad`; other systems: [kicad.org/download](https://www.kicad.org/download/))
+- `python3` with `venv`, `bash`, `zip`
 
 ```bash
 git clone https://github.com/edrethardo/mini3090.git
 cd mini3090
-./setup.sh                    # einmalig: .venv mit den Python-Abhängigkeiten
+./setup.sh                    # once: .venv with the Python dependencies
 ./hardware/gen/release.sh     # -> ZETTEL3090_FINAL/
 ```
 
-`setup.sh` sucht das Python, mit dem KiCad installiert wurde (das einzige, das
-`pcbnew` importieren kann), legt damit `.venv` mit `--system-site-packages` an
-und installiert `requirements.txt`. Liegt KiCads Python woanders:
-`KICAD_PYTHON=/pfad/zu/python3 ./setup.sh`. Die Skripte funktionieren aus jedem
-Checkout-Verzeichnis; mit `PYTHON=...` lässt sich ein anderer Interpreter setzen.
+`setup.sh` looks for the Python that KiCad was installed for (the only one
+that can import `pcbnew`), creates `.venv` from it with
+`--system-site-packages` and installs `requirements.txt`. If KiCad's Python
+lives somewhere else: `KICAD_PYTHON=/path/to/python3 ./setup.sh`. The scripts
+work from any checkout location; set `PYTHON=...` to use a different
+interpreter.
 
-Getestet mit KiCad 9.0.9 unter Ubuntu 24.04. macOS und Windows sind nicht getestet.
+A full run takes a few minutes (measured: just under 7 min).
+Tested with KiCad 9.0.9 on Ubuntu 24.04. macOS and Windows are untested.
 
-Für eine schnelle Design-Iteration ohne den vollen Export:
+For a quick design iteration without the full export:
 
 ```bash
-./hardware/gen/iterate.sh     # -> build/iterate/: Board, beide Seiten gerendert, QR geprüft
+./hardware/gen/iterate.sh     # -> build/iterate/: board, both sides rendered, QR checked
 ```
 
-## Ergebnis
+## Output
 
-`ZETTEL3090_FINAL/` — `ZETTEL3090_PCBWAY_STANDARD.zip` (die einzige
-Fertigungsdatei), KiCad-Quellen, `PCBWAY_ORDER_SETTINGS.md`,
+`ZETTEL3090_FINAL/` — `ZETTEL3090_PCBWAY_STANDARD.zip` (the only fabrication
+file), KiCad sources, `PCBWAY_ORDER_SETTINGS.md`,
 `PCBWAY_MANUFACTURING_NOTES.md`, `DRC_6MIL_REPORT.txt`, `DRC_4MIL_REPORT.txt`,
-`SAME_NET_CLEARANCE_REPORT.txt`, Renders, Gerber-Ansichten, Detailansicht des
-Nummernfeldes und `verification/REPORT.txt`.
+`SAME_NET_CLEARANCE_REPORT.txt`, renders, Gerber views, a close-up of the
+number field and `verification/REPORT.txt`.
 
-## Aufbau des Generators
+## Generator layout
 
 ```
 hardware/gen/
-  layout.py      Alle Maße an einer Stelle: Kontur, Bauteilraster, Keepouts
-  kicadlib.py    Dünne Hülle um pcbnew: Formen, Pads, Text, Gold-Helfer
-  occupancy.py   Belegungskarte (0,05 mm/Zelle) — der Platzierungswächter
-  blocks.py      Bausteine: BGA, GDDR6X, QFN, Choke, Bus, Via-Feld …
-  skyline.py     Berliner Skyline aus Leiterbahnen
-  qr.py          QR-Code als Kupfer + Lötstopp-Öffnungen
-  build.py       Setzt das Board zusammen
-  stackup.py     Schreibt Farben/Oberfläche in die Board-Datei
-  project.py     .kicad_pro mit DRC-Severities und Netzklasse
-  clearance.py   Kupfer-Abstände ohne Netzliste: Inseln, Beinahe-Kontakte
-  strict_drc.py  DRC OHNE Unterdrückungen — bricht bei echten Fehlern ab
+  layout.py      All dimensions in one place: outline, component grid, keepouts
+  kicadlib.py    Thin wrapper around pcbnew: shapes, pads, text, gold helpers
+  occupancy.py   Occupancy map (0.05 mm/cell) — the placement guard
+  blocks.py      Building blocks: BGA, GDDR6X, QFN, choke, bus, via field …
+  skyline.py     Berlin skyline made of copper traces
+  qr.py          QR code as copper + solder-mask openings
+  build.py       Assembles the board
+  stackup.py     Writes colours/surface finish into the board file
+  project.py     .kicad_pro with DRC severities and net class
+  clearance.py   Copper clearances without a netlist: islands, near-contacts
+  strict_drc.py  DRC WITHOUT suppressions — aborts on real errors
   gerber_raster.py / gerber_drc.py / gerber_report.py
-                 Geometrische DRC auf den exportierten Gerbern (6/4 mil)
-  gerber_views.py  Gerber-Ansichten + Detail des Nummernfeldes
-  verify.py      Prüft die EXPORTIERTEN Daten (nicht die Absicht)
-  docs/          PCBWay-Bestellwerte und Fertigungshinweise
-  release.sh     Der vollständige Produktionslauf
-  iterate.sh     Kurzer Design-Loop
+                 Geometric DRC on the exported Gerbers (6/4 mil)
+  gerber_views.py  Gerber views + number-field close-up
+  verify.py      Checks the EXPORTED data (not the intent)
+  env.sh         Shared script setup: repo root, Python, tool checks
+  docs/          PCBWay order settings and manufacturing notes (English)
+  release.sh     The full production run
+  iterate.sh     Short design loop
 ```
 
-### Zwei Entwurfsentscheidungen, die alles tragen
+### Two design decisions that carry everything
 
-**Der Platzierungswächter.** Eine generierte Platine hat keinen Router, der
-Konflikte auflöst. Jedes Objekt fragt deshalb vor dem Setzen eine Belegungs-
-karte, ob seine Fläche frei ist — inklusive Bohrraster und Platinenkante.
-Das ersetzt das nachträgliche Aufweichen der Design Rules: statt Fehler zu
-ignorieren, entstehen sie gar nicht erst.
+**The placement guard.** A generated board has no router to resolve
+conflicts. So before placing anything, every object asks an occupancy map
+whether its area is free — including the drill grid and the board edge. This
+replaces loosening the design rules afterwards: instead of ignoring errors,
+they never arise.
 
-**Zwei Phasen.** Erst werden alle echten Bauteile platziert, dann erst die
-Dekoration (Leiterbahnen, Vias, Streuteile). Andersherum belegt das Fanout
-eines Speicherbausteins den Platz des nächsten, und der Wächter verwirft
-lautlos genau die Bauteile, die das Design ausmachen.
+**Two phases.** All real components are placed first, decoration (traces,
+vias, scattered parts) only afterwards. The other way round, the fanout of one
+memory chip takes the space of the next, and the guard silently drops exactly
+the components that make the design.
 
-### Warum die DRC Ausnahmen hat
+### Why the DRC has exceptions
 
-Ohne Netzliste sind einige Regeln prinzipiell unerfüllbar: jede Leiterbahn
-ist Dekoration und endet im Nichts (`track_dangling`), jede Lötstopp-Öffnung
-liegt per Definition über „verschiedenen Netzen" (`solder_mask_bridge`).
-Diese Regeln sind in `project.py` bewusst abgeschaltet und dort begründet.
+Without a netlist some rules can never be satisfied: every trace is
+decoration and ends in nothing (`track_dangling`), and every solder-mask
+opening by definition sits over "different nets" (`solder_mask_bridge`).
+These rules are deliberately disabled in `project.py`, with the reasons
+given there.
 
-Damit diese Liste nicht unbemerkt wächst und echte Fehler verdeckt, läuft
-`strict_drc.py` denselben Check **ohne** Unterdrückungen und bricht ab, sobald
-eine Regel verletzt wird, die tatsächliche Fertigbarkeit beschreibt —
-Abstände, Bohrungen, Kantenabstand, Leiterbahnbreite, Restring, Schrifthöhe.
+So that this list cannot grow unnoticed and hide real errors, `strict_drc.py`
+runs the same check **without** suppressions and aborts as soon as a rule is
+violated that describes actual manufacturability — clearances, drills, edge
+clearance, trace width, annular ring, text height.
 
-## Lizenz
+## License
 
-[MIT](LICENSE) — Generator, Skripte und Doku.
+[MIT](LICENSE) — generator, scripts and documentation.
 
-## Rechtliches
+## Legal
 
-NVIDIA, GeForce, RTX und GA102 sind Marken der NVIDIA Corporation. Dieses
-Projekt ist inoffiziell, nicht funktional und steht in keiner Verbindung zu
-NVIDIA. Es wurden keine NVIDIA-Schaltpläne oder -Layoutdaten verwendet; die
-Anmutung ist nach öffentlich sichtbaren Platinenfotos frei nachempfunden.
-Es werden keine NVIDIA-Logos oder geschützten Gestaltungselemente abgebildet.
+NVIDIA, GeForce, RTX and GA102 are trademarks of NVIDIA Corporation. This
+project is unofficial and non-functional, and it is not affiliated with
+NVIDIA. No NVIDIA schematics or layout data were used; the look is freely
+modelled on publicly visible board photos. No NVIDIA logos or protected
+design elements are shown.
