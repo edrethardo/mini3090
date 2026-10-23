@@ -170,7 +170,12 @@ def gold_circle(board, back, cx, cy, r):
 
 
 def gold_stroke(board, back, pts, width, close=False):
-    """A stroked path in exposed gold (copper + mask)."""
+    """A stroked path in exposed gold (copper + mask).
+
+    Copper narrower than the fab's track floor is not etched reliably, so
+    decorative strokes are clamped to MIN_TRACK like real tracks.
+    """
+    width = max(width, MIN_TRACK)
     cu = pcbnew.B_Cu if back else pcbnew.F_Cu
     mask = pcbnew.B_Mask if back else pcbnew.F_Mask
     polyline(board, cu, pts, width, close=close)
@@ -182,6 +187,110 @@ def gold_text(board, back, txt, x, y, height, thickness, **kw):
     mask = pcbnew.B_Mask if back else pcbnew.F_Mask
     text(board, cu, txt, x, y, height, thickness, **kw)
     text(board, mask, txt, x, y, height, thickness + 2 * GOLD_BLEED, **kw)
+
+
+def _bridge_near_outlines(ps, min_gap, rnd, err, rounds=6):
+    """Join separate outlines that still come closer than `min_gap`.
+
+    A closing fills gaps narrower than its diameter, but where a gap is only
+    slightly WIDER, the two grown shapes meet at a point and the shrink leaves
+    a cusp pointing at the neighbour — closer than the original gap was.
+    Those pairs are joined by the lens where both shapes, grown by half the
+    gap, overlap: the result is one feature with no sliver between.
+    """
+    clr = MM(min_gap)
+    grow = MM(min_gap / 2.0 + 0.01)
+    for _ in range(rounds):
+        # Each part is grown ONCE; two parts closer than min_gap are exactly
+        # the pairs whose grown copies intersect, and that intersection is
+        # the bridge. (SHAPE_POLY_SET.Collide on large holed outlines took
+        # >40 s per call; Clipper booleans take milliseconds.)
+        grown, boxes = [], []
+        for k in range(ps.OutlineCount()):
+            one = pcbnew.SHAPE_POLY_SET()
+            one.AddOutline(ps.COutline(k))
+            for h in range(ps.HoleCount(k)):
+                one.AddHole(ps.CHole(k, h))
+            b = one.BBox()
+            boxes.append((b.GetLeft(), b.GetTop(), b.GetRight(), b.GetBottom()))
+            one.Inflate(grow, rnd, err)
+            grown.append(one)
+        order = sorted(range(len(boxes)), key=lambda i: boxes[i][0])
+        bridges = pcbnew.SHAPE_POLY_SET()
+        for oi, i in enumerate(order):
+            bi = boxes[i]
+            for j in order[oi + 1:]:
+                bj = boxes[j]
+                if bj[0] > bi[2] + clr:
+                    break
+                if bi[1] > bj[3] + clr or bj[1] > bi[3] + clr:
+                    continue
+                a = grown[i].CloneDropTriangulation()
+                a.BooleanIntersection(grown[j])
+                if a.OutlineCount():
+                    bridges.BooleanAdd(a)
+        if bridges.OutlineCount() == 0:
+            return
+        ps.BooleanAdd(bridges)
+        ps.Simplify()
+
+
+def merge_gold(board, back, items, min_gap):
+    """Fuse drawn gold artwork into one clean copper shape plus its mask.
+
+    Line art drawn as many overlapping strokes leaves slivers of laminate
+    narrower than the fab can etch wherever two strokes ALMOST meet (a window
+    rung 0.05 mm short of a wall). A closing (grow by min_gap/2, shrink back)
+    fills exactly the gaps narrower than min_gap and leaves the drawing
+    otherwise untouched. The mask opening is derived from the merged copper,
+    so copper and gold exposure can never disagree.
+
+    `items` are the PCB_SHAPEs the artwork created on the copper and mask
+    layers; they are replaced by the merged result.
+    """
+    cu = pcbnew.B_Cu if back else pcbnew.F_Cu
+    mask = pcbnew.B_Mask if back else pcbnew.F_Mask
+    err = MM(0.002)
+    rnd = pcbnew.CORNER_STRATEGY_ROUND_ALL_CORNERS
+    ps = pcbnew.SHAPE_POLY_SET()
+    for it in items:
+        if it.GetLayer() == cu:
+            if isinstance(it, pcbnew.PCB_TEXT):
+                # TransformShapeToPolygon gives a text's BOUNDING BOX (zone
+                # keep-out semantics); the glyph strokes come from this one.
+                it.TransformTextToPolySet(ps, 0, err, pcbnew.ERROR_INSIDE)
+            else:
+                it.TransformShapeToPolygon(ps, cu, 0, err, pcbnew.ERROR_INSIDE)
+    ps.Simplify()
+    ps.Inflate(MM(min_gap / 2.0), rnd, err)
+    ps.Simplify()
+    ps.Inflate(MM(-min_gap / 2.0), rnd, err)
+    ps.Simplify()
+    _bridge_near_outlines(ps, min_gap, rnd, err)
+    opening = ps.CloneDropTriangulation()
+    opening.Inflate(MM(GOLD_BLEED), rnd, err)
+    opening.Simplify()
+    for it in items:
+        board.Remove(it)
+    out = []
+    for layer, shape in ((cu, ps), (mask, opening)):
+        # Fracture turns holes into slits so each outline is one simple
+        # polygon; a saved gr_poly holds exactly ONE outline, so a multi-
+        # outline set must become one PCB_SHAPE per outline or the rest is
+        # silently dropped on save.
+        shape.Fracture()
+        for k in range(shape.OutlineCount()):
+            one = pcbnew.SHAPE_POLY_SET()
+            one.AddOutline(shape.COutline(k))
+            s = pcbnew.PCB_SHAPE(board)
+            s.SetShape(pcbnew.SHAPE_T_POLY)
+            s.SetPolyShape(one)
+            s.SetLayer(layer)
+            s.SetFilled(True)
+            s.SetWidth(0)
+            board.Add(s)
+            out.append(s)
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -238,7 +347,8 @@ def npth(board, x, y, drill, ref="H"):
     return fp
 
 
-MIN_TRACK = 0.15   # fab floor; also KiCad's default netclass minimum
+MIN_TRACK = 0.16   # 6 mil = 0.1524 mm is the fab floor; 0.16 keeps a margin
+MIN_SPACE = 0.16   # same floor for the laminate gap between copper features
 
 
 def track(board, layer, a, b, width):
@@ -257,18 +367,19 @@ def track_path(board, layer, pts, width):
 
 
 MIN_DRILL = 0.3
-MIN_VIA = 0.45
+MIN_RING = 0.15    # PCBWay standard annular ring
+MIN_VIA = MIN_DRILL + 2 * MIN_RING
 
 
 def via(board, x, y, drill=0.3, diameter=0.6):
     """Through via.
 
-    Sizes are clamped to the fab/netclass floor (0.3 mm drill, 0.45 mm pad).
+    Sizes are clamped to the fab floor (0.3 mm drill, 0.15 mm annular ring).
     Callers asking for smaller decorative vias silently get the legal minimum
     rather than a DRC error — the visual difference at 0.1 mm is nil.
     """
     drill = max(drill, MIN_DRILL)
-    diameter = max(diameter, MIN_VIA, drill + 0.2)
+    diameter = max(diameter, MIN_VIA, drill + 2 * MIN_RING)
     v = pcbnew.PCB_VIA(board)
     v.SetPosition(V(x, y))
     v.SetViaType(pcbnew.VIATYPE_THROUGH)

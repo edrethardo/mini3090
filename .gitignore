@@ -18,6 +18,7 @@ fp-info-cache
 # Die Quelle ist der Generator, nicht das Ergebnis — Gerber und Renderings
 # werden reproduzierbar neu gebaut und gehören nicht ins Repo.
 ZETTEL3090_FINAL/
+build/
 hardware/production/
 *.gbr
 *.gbl

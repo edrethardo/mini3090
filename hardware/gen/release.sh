@@ -1,98 +1,88 @@
 #!/usr/bin/env bash
 #
-# Full production run for ZETTEL3090.
+# Full production run for ZETTEL3090 — ONE design, ONE Gerber set.
 #
-# Everything downstream of the KiCad board is produced BY KiCad: kicad-cli
-# exports the Gerbers, the drill files and the renders. Nothing is hand-written
-# and nothing is patched after export.
+# Every board of the edition is fabricated from the same files. The front
+# carries "/03" in silkscreen after a blank field of bare matte-black mask;
+# the individual number (01, 02, 03) is written in by hand after
+# fabrication. PCBWay therefore sees exactly one design (no multi-design or
+# panel surcharge).
+#
+# Everything downstream of the KiCad board is produced BY KiCad (kicad-cli)
+# or measured FROM the exported Gerbers. Nothing is patched after export.
 #
 #   ./release.sh [OUTDIR]     default: <repo>/ZETTEL3090_FINAL
-#
-# The edition size lives in SERIALS/TOTAL below and is threaded through to
-# build.py, the directory names and the verifier — so growing the run from two
-# boards to three means editing exactly one line.
 set -euo pipefail
 
-ROOT=/data/projects/mini3090
-PY=$ROOT/.venv/bin/python
-GEN=$ROOT/hardware/gen
+source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 OUT=${1:-$ROOT/ZETTEL3090_FINAL}
 
-SERIALS=(01 02 03)
-TOTAL=$(printf '%02d' "${#SERIALS[@]}")
+TOTAL=03            # printed edition size ("/03"); the ONLY place it lives
+NAME=ZETTEL3090
+ZIP=ZETTEL3090_PCBWAY_STANDARD.zip
 
 rm -rf "$OUT"
-mkdir -p "$OUT"/{source,preview,verification}
+mkdir -p "$OUT"/{source,gerbers,preview,verification}
+PCB="$OUT/source/$NAME.kicad_pcb"
+G="$OUT/gerbers"
+V="$OUT/verification"
 
 echo "==> KiCad: $(kicad-cli version)"
-echo "==> edition: ${#SERIALS[@]} boards (01..$TOTAL)"
+echo "==> one design, edition marking /$TOTAL (number written by hand)"
 
-for S in "${SERIALS[@]}"; do
-  DIR="$OUT/board_${S}_of_${TOTAL}"
-  mkdir -p "$DIR/gerbers"
-  PCB="$OUT/source/ZETTEL3090_${S}.kicad_pcb"
+echo "==> generating"
+"$PY" "$GEN/build.py" --total "$TOTAL" --out "$PCB" --info "$V/board_stats.json" >/dev/null
+"$PY" "$GEN/stackup.py" "$PCB" >/dev/null
+"$PY" "$GEN/project.py" "$OUT/source/$NAME.kicad_pro" >/dev/null
 
-  echo "==> board $S/$TOTAL: generating"
-  "$PY" "$GEN/build.py" --serial "$S" --total "$TOTAL" --out "$PCB" \
-      --info "$OUT/verification/board_${S}_stats.json" >/dev/null
-  "$PY" "$GEN/stackup.py" "$PCB" >/dev/null
-  "$PY" "$GEN/project.py" "$OUT/source/ZETTEL3090_${S}.kicad_pro" >/dev/null
+echo "==> KiCad DRC"
+"$PY" "$GEN/strict_drc.py" "$PCB" | tee "$V/strict_drc.txt"
+kicad-cli pcb drc --severity-error --severity-warning \
+    -o "$V/kicad_drc.txt" "$PCB" > "$V/kicad_drc.log" 2>&1 || true
 
-  echo "==> board $S/$TOTAL: DRC (strict: only net-dependent rules may remain)"
-  "$PY" "$GEN/strict_drc.py" "$PCB" \
-      | tee "$OUT/verification/strict_drc_${S}.txt"
-  kicad-cli pcb drc --severity-error --severity-warning \
-      -o "$OUT/verification/drc_${S}.txt" "$PCB" \
-      > "$OUT/verification/drc_${S}.log" 2>&1 || true
+echo "==> gerbers + drill + job"
+kicad-cli pcb export gerbers \
+    --layers F.Cu,B.Cu,F.Mask,B.Mask,F.Silkscreen,B.Silkscreen,Edge.Cuts \
+    --no-protel-ext -o "$G/" "$PCB" > /dev/null
+kicad-cli pcb export drill --format excellon --excellon-separate-th \
+    --generate-map --map-format gerberx2 --drill-origin absolute \
+    --excellon-units mm --generate-report --report-path "$V/drill_report.txt" \
+    -o "$G/" "$PCB" > /dev/null
 
-  echo "==> board $S/$TOTAL: gerbers + drill"
-  kicad-cli pcb export gerbers \
-      --layers F.Cu,B.Cu,F.Mask,B.Mask,F.Silkscreen,B.Silkscreen,Edge.Cuts \
-      --no-protel-ext \
-      -o "$DIR/gerbers/" "$PCB" > /dev/null
-  kicad-cli pcb export drill --format excellon --excellon-separate-th \
-      --generate-map --map-format gerberx2 --drill-origin absolute \
-      --excellon-units mm --generate-report \
-      --report-path "$OUT/verification/drill_report_${S}.txt" \
-      -o "$DIR/gerbers/" "$PCB" > /dev/null
+# Explicit file list: the drill MAP is documentation, not fab data (a viewer
+# shows it as a bogus extra layer), so it stays out of the upload. A glob
+# with zip -x does not work: the shell expands it before zip sees the -x.
+( cd "$G" && zip -q "../$ZIP" \
+    "$NAME-F_Cu.gbr" "$NAME-B_Cu.gbr" \
+    "$NAME-F_Mask.gbr" "$NAME-B_Mask.gbr" \
+    "$NAME-F_Silkscreen.gbr" "$NAME-B_Silkscreen.gbr" \
+    "$NAME-Edge_Cuts.gbr" \
+    "$NAME-PTH.drl" "$NAME-NPTH.drl" \
+    "$NAME-job.gbrjob" )
 
-  # The drill MAP is documentation (a plot of drill symbols plus a legend
-  # table). Fabs read the .drl; an online viewer renders the map as a bogus
-  # extra layer covering the board. It stays in gerbers/ as a reference and
-  # out of the ZIP that gets uploaded.
-  #
-  # The file list is explicit: with `zip *.gbr -x '*-drl_map.gbr'` the shell
-  # expands the glob first and zip's exclude no longer matches, so the maps
-  # end up in the archive anyway.
-  ( cd "$DIR/gerbers" && zip -q "../ZETTEL3090_${S}_of_${TOTAL}_gerbers.zip" \
-      "ZETTEL3090_${S}-F_Cu.gbr" \
-      "ZETTEL3090_${S}-B_Cu.gbr" \
-      "ZETTEL3090_${S}-F_Mask.gbr" \
-      "ZETTEL3090_${S}-B_Mask.gbr" \
-      "ZETTEL3090_${S}-F_Silkscreen.gbr" \
-      "ZETTEL3090_${S}-B_Silkscreen.gbr" \
-      "ZETTEL3090_${S}-Edge_Cuts.gbr" \
-      "ZETTEL3090_${S}-PTH.drl" \
-      "ZETTEL3090_${S}-NPTH.drl" \
-      "ZETTEL3090_${S}-job.gbrjob" )
-  cp "$DIR/gerbers"/*.drl "$DIR/" 2>/dev/null || true
+echo "==> geometric DRC on the exported Gerbers (6 mil, 4 mil, same-net)"
+( cd "$GEN" && "$PY" gerber_report.py "$G" "$OUT" --scratch "$V/.raster" ) \
+    | tee "$V/gerber_drc.log"
 
-  echo "==> board $S/$TOTAL: renders"
-  kicad-cli pcb render --use-board-stackup-colors --side top    -o "$OUT/preview/board_${S}_front_3d.png" \
-      -w 3000 --height 1400 --quality high --zoom 1.1 --rotate '-20,0,0' \
-      --perspective "$PCB" > /dev/null
-  kicad-cli pcb render --use-board-stackup-colors --side bottom -o "$OUT/preview/board_${S}_back_3d.png" \
-      -w 3000 --height 1400 --quality high --zoom 1.1 --rotate '-20,0,0' \
-      --perspective "$PCB" > /dev/null
-  kicad-cli pcb render --use-board-stackup-colors --side top    -o "$OUT/preview/board_${S}_front.png" \
-      -w 4400 --height 2000 --quality high --zoom 1.15 "$PCB" > /dev/null
-  kicad-cli pcb render --use-board-stackup-colors --side bottom -o "$OUT/preview/board_${S}_back.png" \
-      -w 4400 --height 2000 --quality high --zoom 1.15 "$PCB" > /dev/null
-done
+echo "==> renders"
+R() { kicad-cli pcb render --use-board-stackup-colors "$@" "$PCB" > /dev/null; }
+R --side top    -o "$OUT/preview/front.png" -w 4400 --height 2000 --quality high --zoom 1.15
+R --side bottom -o "$OUT/preview/back.png"  -w 4400 --height 2000 --quality high --zoom 1.15
+R --side top    -o "$OUT/preview/front_3d.png" -w 3000 --height 1400 --quality high \
+    --zoom 1.1 --rotate '-20,0,0' --perspective
+R --side bottom -o "$OUT/preview/back_3d.png"  -w 3000 --height 1400 --quality high \
+    --zoom 1.1 --rotate '-20,0,0' --perspective
+
+echo "==> gerber viewer screenshots + number field detail"
+( cd "$GEN" && "$PY" gerber_views.py "$G" "$OUT/preview" "$V/board_stats.json" \
+    "$OUT/preview/front.png" --scratch "$V/.raster" )
+
+echo "==> docs"
+cp "$GEN/docs/PCBWAY_ORDER_SETTINGS.md" "$GEN/docs/PCBWAY_MANUFACTURING_NOTES.md" "$OUT/"
 
 echo "==> verification"
-cp "$GEN/ORDER_README.md" "$OUT/ORDER_README.md"
-"$PY" "$GEN/verify.py" "$OUT" | tee "$OUT/verification/REPORT.txt"
+"$PY" "$GEN/verify.py" "$OUT" | tee "$V/REPORT.txt"
+rm -rf "$V/.raster"
 
 echo
 echo "done -> $OUT"

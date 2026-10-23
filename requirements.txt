@@ -1,0 +1,5 @@
+# KiCad's pcbnew comes from the system KiCad install, not from pip.
+segno>=1.6
+opencv-python-headless>=4.8
+numpy>=1.24
+pygerber>=2.4,<3

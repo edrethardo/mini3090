@@ -57,8 +57,8 @@ def project(name: str) -> dict:
                 "meta": {"version": 2},
                 "rule_severities": sev,
                 "rules": {
-                    "min_clearance": 0.15,
-                    "min_copper_edge_clearance": 0.4,
+                    "min_clearance": 0.1524,        # 6 mil
+                    "min_copper_edge_clearance": 0.3,
                     "min_hole_clearance": 0.25,
                     "min_hole_to_hole": 0.25,
                     "min_microvia_diameter": 0.2,
@@ -68,11 +68,11 @@ def project(name: str) -> dict:
                     "min_text_height": 0.8,
                     "min_text_thickness": 0.15,
                     "min_through_hole_diameter": 0.3,
-                    "min_track_width": 0.15,
-                    "min_via_annular_width": 0.1,
-                    "min_via_diameter": 0.45,
+                    "min_track_width": 0.1524,      # 6 mil
+                    "min_via_annular_width": 0.15,
+                    "min_via_diameter": 0.6,
                 },
-                "track_widths": [0.0, 0.15, 0.2, 0.25, 0.4],
+                "track_widths": [0.0, 0.16, 0.2, 0.25, 0.4],
                 "via_dimensions": [
                     {"diameter": 0.0, "drill": 0.0},
                     {"diameter": 0.6, "drill": 0.3},
@@ -87,7 +87,7 @@ def project(name: str) -> dict:
             "classes": [
                 {
                     "bus_width": 12,
-                    "clearance": 0.2,
+                    "clearance": 0.16,
                     "diff_pair_gap": 0.25,
                     "diff_pair_width": 0.2,
                     "line_style": 0,
@@ -96,7 +96,7 @@ def project(name: str) -> dict:
                     "name": "Default",
                     "pcb_color": "rgba(0, 0, 0, 0.000)",
                     "schematic_color": "rgba(0, 0, 0, 0.000)",
-                    "track_width": 0.2,
+                    "track_width": 0.16,
                     "via_diameter": 0.6,
                     "via_drill": 0.3,
                     "wire_width": 6,

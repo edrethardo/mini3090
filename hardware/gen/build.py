@@ -14,11 +14,12 @@ Colours are part of the deliverable: black solder mask, white silkscreen,
 ENIG gold. These are written into the board stackup so `kicad-cli pcb render`
 shows the real thing rather than KiCad's green default.
 
-Usage:  python3 build.py --serial 01 --total 03 --out /path/ZETTEL3090_01.kicad_pcb
+Usage:  python3 build.py --out /path/ZETTEL3090.kicad_pcb [--total 03]
 
-`--serial` / `--total` produce the "01/03" marking that appears in gold on the
-front and in silkscreen on the back. The edition size lives in exactly one
-place per run; nothing downstream hardcodes it.
+There is exactly ONE board design. Every board of the edition is made from the
+same Gerber set; the front carries "/03" in silkscreen after a blank field of
+bare mask, and the individual number (01, 02, 03) is written in by hand after
+fabrication. Nothing in the artwork differs between boards.
 """
 
 from __future__ import annotations
@@ -43,10 +44,11 @@ from blocks import (
     via_ring,
 )
 from occupancy import Occupancy
+from clearance import assign_island_nets, resolve
 from kicadlib import (
-    GOLD_BLEED, MM, V, arc, circle, gold_circle, gold_poly, gold_rect,
-    gold_stroke, gold_text, new_fp, npth, poly, polyline, rect, rect_c, seg,
-    smd_pad, text, track, track_path, via,
+    GOLD_BLEED, MIN_RING, MIN_SPACE, MIN_TRACK, MIN_VIA, MM, V, arc, circle,
+    gold_circle, gold_poly, gold_rect, gold_stroke, gold_text, new_fp, npth,
+    poly, polyline, rect, rect_c, seg, smd_pad, text, track, track_path, via,
 )
 from qr import place_qr
 from skyline import draw_skyline
@@ -265,7 +267,7 @@ def site(ref, fallback=None):
 # front side
 # ==========================================================================
 
-def build_front(board, serial, total, rng):
+def build_front(board, total, rng):
     cx, cy = L.GPU_CX, L.GPU_CY
     half = L.GPU_SUB / 2.0
 
@@ -276,19 +278,9 @@ def build_front(board, serial, total, rng):
     # labels, so the part name sits below the substrate where there is air.
     text(board, F_SILK, "U1   GA102-Z", cx, cy + half + 1.3, 0.9, 0.16)
 
-    # Exposed die: a solid gold plate with white marking, the way a real
-    # flip-chip die carries its part and lot codes.
-    #
-    # Mask openings are ADDITIVE (a union of openings), so dark text cannot be
-    # subtracted from a gold plate; the marking is therefore silkscreen, which
-    # a fab prints on top of the ENIG finish.
-    #
-    # Two lines only: silk has a 0.8 mm height floor, and three lines on a
-    # 7 mm die all clamp to that floor and collide into an unreadable block.
+    # Exposed die: a plain solid gold plate, no marking on it.
     d = L.GPU_DIE / 2.0 - 0.55
     gold_rect(board, False, cx - d, cy - d, 2 * d, 2 * d)
-    text(board, F_SILK, "ZETTEL", cx, cy - 0.9, 1.5, 0.26)
-    text(board, F_SILK, "GTC BERLIN 2026", cx, cy + 1.1, 0.85, 0.16)
 
     # substrate stiffener / bracket corners in silk
     for sx in (-1, 1):
@@ -343,10 +335,11 @@ def build_front(board, serial, total, rng):
     build_display_area(board, rng)
 
     # --- quiet branding area (claims its block before the filler runs) ---
-    build_branding(board, serial, total)
+    field = build_branding(board, total)
 
     # --- scattered detail: discretes, test points, small ICs -------------
     build_front_detail(board, rng)
+    return field
 
 
 def build_vrm(board, rng):
@@ -552,12 +545,15 @@ def fill_density(board, rng):
     return vias, placed, back_placed
 
 
-def build_branding(board, serial, total):
+def build_branding(board, total):
     """Quiet, high-value branding block on the right front side.
 
     Vertical rhythm is fixed here so nothing collides: rule, wordmark, rule,
-    two caption lines, serial, footnote. Every y is stated explicitly rather
-    than derived, because this is the one area a reader looks at closely.
+    two caption lines, the edition marking, footnote. Every y is stated
+    explicitly rather than derived, because this is the one area a reader
+    looks at closely.
+
+    Returns the geometry of the hand-numbering field for the verifier.
     """
     cx = (L.QUIET_X0 + L.QUIET_X1) / 2.0
 
@@ -570,21 +566,65 @@ def build_branding(board, serial, total):
     gold_stroke(board, False, [(L.QUIET_X0, 15.0), (L.QUIET_X1, 15.0)], 0.18)
     gold_stroke(board, False, [(L.QUIET_X0, 38.4), (100.6, 38.4)], 0.18)
 
-    gold_text(board, False, "ZETTEL", cx, 20.8, 5.2, 0.82)
-    seg(board, F_SILK, (cx - 8.5, 24.2), (cx + 8.5, 24.2), 0.15)
+    gold_text(board, False, "ZETTEL", cx, 20.3, 5.2, 0.82)
+    seg(board, F_SILK, (cx - 8.5, 23.6), (cx + 8.5, 23.6), 0.15)
 
-    text(board, F_SILK, "NEMOTRON 3.5", cx, 27.0, 1.45, 0.23)
-    text(board, F_SILK, "GTC BERLIN 2026", cx, 29.9, 1.45, 0.23)
+    text(board, F_SILK, "NEMOTRON 3.5", cx, 25.6, 1.45, 0.23)
+    text(board, F_SILK, "GTC BERLIN 2026", cx, 27.8, 1.45, 0.23)
 
-    gold_text(board, False, f"{serial}/{total}", cx, 34.2, 2.6, 0.42)
-    text(board, F_SILK, "RTX 3090   .   LOCAL   .   24 GB", cx, 36.8, 0.85, 0.15)
+    field = build_number_field(board, cx, total)
+
+    text(board, F_SILK, "RTX 3090   .   LOCAL   .   24 GB", cx, 36.2, 0.85, 0.15)
+    return field
+
+
+def build_number_field(board, cx, total):
+    """"/03" in silkscreen, preceded by a blank field for a hand-written number.
+
+    All boards come from one Gerber set, so the number cannot be in the
+    artwork. The field is bare matt-black mask: no silk, no copper (copper
+    under mask shows as a raised, glossier patch and would make the paint pen
+    skip), no mask opening. The group [field]/03 is centred as a unit so the
+    finished "01/03" sits on the block's axis like the lines above it.
+
+    No frame or corner marks: the blank black field stays completely clean,
+    so nothing competes with the number written into it.
+    """
+    fw, fh, cy = L.NUM_FIELD_W, L.NUM_FIELD_H, L.NUM_FIELD_CY
+
+    # set "/03" once to measure its real ink width, then place the group
+    label = text(board, F_SILK, f"/{total}", 0.0, cy, L.NUM_TEXT_H, L.NUM_TEXT_W,
+                 hjustify=pcbnew.GR_TEXT_H_ALIGN_LEFT)
+    bb = label.GetBoundingBox()
+    ink_w = (bb.GetRight() - bb.GetLeft()) / 1e6
+    group_w = fw + L.NUM_GAP + ink_w
+    x0 = cx - group_w / 2.0
+    x1 = x0 + fw
+    y0, y1 = cy - fh / 2.0, cy + fh / 2.0
+    # shift so the INK (not the anchor) starts exactly NUM_GAP after the field
+    label.Move(pcbnew.VECTOR2I(MM(x1 + L.NUM_GAP) - bb.GetLeft(), 0))
+
+    # nothing else may come near the writing surface. A front reservation also
+    # keeps through vias out: guarded_via needs BOTH sides free.
+    c = L.NUM_FIELD_CLEAR
+    reserve((x0 + x1) / 2, cy, fw + 2 * c, fh + 2 * c, False)
+    lb = label.GetBoundingBox()
+    return {
+        "field_mm": [round(x0, 3), round(y0, 3), round(x1, 3), round(y1, 3)],
+        "label": f"/{total}",
+        "label_bbox_mm": [round(lb.GetLeft() / 1e6, 3), round(lb.GetTop() / 1e6, 3),
+                          round(lb.GetRight() / 1e6, 3), round(lb.GetBottom() / 1e6, 3)],
+        "label_height_mm": L.NUM_TEXT_H,
+        "label_stroke_mm": L.NUM_TEXT_W,
+        "clear_margin_mm": c,
+    }
 
 
 # ==========================================================================
 # back side
 # ==========================================================================
 
-def build_back(board, serial, total, rng):
+def build_back(board, rng):
     """Back side: a technical GPU backside whose centre resolves into Berlin.
 
     Everything is kept OUT of two bands: the skyline band and the QR keepout.
@@ -616,12 +656,15 @@ def build_back(board, serial, total, rng):
     testpad_row(board, "TPX", 20.0, 44.8, 10, 1.6, back=True, d=0.85)
     testpad_row(board, "TPY", 66.0, 45.4, 6, 1.5, back=True, d=0.85)
 
-    # technical routing above the skyline: a horizon of fine traces
+    # technical routing above the skyline: a horizon of fine traces. The bus
+    # at y = 11.6 lies inside the protected skyline band, which exists to keep
+    # vias and filler out — deliberate routing may enter it, so that bus is
+    # unguarded; the final clearance pass still measures it.
     for i in range(8):
         y = 2.0 + i * 0.34
         safe_track_path(board, B_CU, [(20.0, y), (78.0, y)], 0.12)
     diff_bus(board, B_CU, 20.0, 11.6, 78.0, 12.6, pairs=2, spacing=0.46,
-             width=0.13, gap=0.17, wiggle=0.2, rng=rng)
+             width=0.13, gap=0.17, wiggle=0.2, rng=rng, guarded=False)
     diff_bus(board, B_CU, 20.0, 44.0, 62.0, 45.0, pairs=2, spacing=0.44,
              width=0.13, gap=0.17, wiggle=0.2, rng=rng)
 
@@ -642,13 +685,12 @@ def build_back(board, serial, total, rng):
     text(board, B_SILK, "github.com/edrethardo/zettel", L.QR_CENTER[0],
          L.QR_CENTER[1] + extent / 2 + 1.5, 0.8, 0.14)
 
-    # Back branding (same serial as the front). Both sit in the strip between
-    # the board's top step (y = 6 for x > 72) and the QR keepout (y >= 11.5) —
-    # the only clear area on this side of the back.
-    # Reserve the back branding block so the filler scatter stays out of it.
+    # Back branding sits in the strip between the board's top step (y = 6 for
+    # x > 72) and the QR keepout (y >= 11.5) — the only clear area on this
+    # side of the back. The edition marking lives on the FRONT only: one
+    # hand-numbered field per board, not two that could disagree.
     reserve(L.QR_CENTER[0], 9.5, 22.0, 4.6, True)
-    text(board, B_SILK, "ZETTEL", L.QR_CENTER[0], 8.4, 2.0, 0.3)
-    text(board, B_SILK, f"{serial}/{total}", L.QR_CENTER[0], 10.6, 1.3, 0.24)
+    text(board, B_SILK, "ZETTEL", L.QR_CENTER[0], 9.2, 2.0, 0.3)
     text(board, B_SILK, "NEMOTRON 3.5   .   GTC BERLIN 2026", 47.0,
          L.SKY_BASE + 2.2, 1.0, 0.18)
     return info
@@ -659,35 +701,32 @@ def build_back(board, serial, total, rng):
 # ==========================================================================
 
 def apply_stackup_and_rules(board):
-    """Board-level electrical/manufacturing settings.
+    """Board-level manufacturing settings.
 
-    Values match a standard low-cost 2-layer process (JLCPCB/PCBWay): 0.15 mm
-    track/clearance, 0.3 mm drill, 0.45 mm via. The defaults KiCad ships with
-    are already close; we only widen what this artwork genuinely needs.
+    PCBWay standard 2-layer process at 6/6 mil: 0.1524 mm track and space,
+    0.3 mm drill, 0.15 mm annular ring (0.6 mm via), 0.3 mm copper to edge.
+    The board's own minimum is set a little above that (0.16 mm) so every
+    number has margin; the Gerber-level checker proves both 6 and 4 mil.
     """
     ds = board.GetDesignSettings()
     ds.SetCopperLayerCount(2)
     ds.SetBoardThickness(MM(1.6))
-    for key, val in [("m_TrackMinWidth", MM(0.15)),
-                     ("m_MinClearance", MM(0.15)),
-                     ("m_ViasMinSize", MM(0.45)),
-                     ("m_ViasMinAnnularWidth", MM(0.1)),
+    for key, val in [("m_TrackMinWidth", MM(MIN_TRACK)),
+                     ("m_MinClearance", MM(MIN_SPACE)),
+                     ("m_ViasMinSize", MM(MIN_VIA)),
+                     ("m_ViasMinAnnularWidth", MM(MIN_RING)),
                      ("m_MinThroughDrill", MM(0.3)),
                      ("m_HoleClearance", MM(0.25)),
                      ("m_HoleToHoleMin", MM(0.25)),
                      ("m_CopperEdgeClearance", MM(0.4)),
                      ("m_MinSilkTextHeight", MM(0.8)),
                      ("m_MinSilkTextThickness", MM(0.15))]:
-        try:
-            setattr(ds, key, val)
-        except Exception:
-            pass
+        setattr(ds, key, val)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--serial", required=True, help='e.g. "01"')
-    ap.add_argument("--total", default="03",
+    ap.add_argument("--total", default=L.EDITION,
                     help='edition size printed after the slash, e.g. "03"')
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=30902026)
@@ -712,15 +751,25 @@ def main():
     build_outline(board)
     build_card_edge(board)
     place_packages(board, rng)
-    build_front(board, args.serial, args.total, rng)
-    qr_info = build_back(board, args.serial, args.total, rng)
+    field = build_front(board, args.total, rng)
+    qr_info = build_back(board, rng)
     vias, front_chips, back_chips = fill_density(board, rng)
+
+    # The occupancy guard works on rectangles and misses diagonal near-misses;
+    # this pass measures the real copper shapes and drops decoration until no
+    # two separate copper features are closer than the fab can etch.
+    removed, unresolved = resolve(board, MIN_SPACE)
+    if unresolved:
+        for a, b in unresolved[:20]:
+            print(f"UNRESOLVED clearance: {a.label()}  <->  {b.label()}",
+                  file=sys.stderr)
+        sys.exit(f"{len(unresolved)} clearance conflicts between fixed artwork")
+    islands = assign_island_nets(board)
 
     pcbnew.SaveBoard(args.out, board)
 
     fps = list(board.GetFootprints())
     stats = {
-        "serial": args.serial,
         "total": args.total,
         "out": args.out,
         "footprints": len(fps),
@@ -728,8 +777,11 @@ def main():
         "tracks": len(list(board.GetTracks())),
         "drawings": len(list(board.GetDrawings())),
         "qr": qr_info,
+        "number_field": field,
         "vias": vias,
         "filler_chips": {"front": front_chips, "back": back_chips},
+        "clearance_removed": len(removed),
+        "copper_islands": islands,
         "missing_packages": MISSING,
     }
     print(json.dumps(stats, indent=2))

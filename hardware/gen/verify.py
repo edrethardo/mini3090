@@ -10,9 +10,11 @@ files, renders), not the generator's own beliefs.
   4. the QR quiet zone contains no foreign copper/silk (checked against the
      exported B.Cu / B.Silkscreen / B.Mask Gerbers, not the render)
   5. B.Silkscreen text is NOT mirrored when viewed from the back
-  6. every serial number appears on its own board, front and back, and no
-     other board's number appears on it
-  7. solder mask openings stay a minority of the board area (black dominates)
+  6. exactly ONE design: one board, one Gerber set, one ZIP; "/03" in front
+     silkscreen, no board-specific number anywhere in the artwork
+  7. the hand-numbering field is empty on every layer (measured on Gerbers)
+  8. Gerber DRC at 6 mil and 4 mil passes
+  9. solder mask openings stay a minority of the board area (black dominates)
 """
 
 from __future__ import annotations
@@ -216,29 +218,87 @@ def check_back_text_orientation(pcb: Path, serial: str):
           + (f": {wrong[:3]}" if wrong else ""))
 
 
-def check_serial_text(pcb: Path, serial: str, total: str, all_serials):
-    """The board must carry its OWN number — and nobody else's.
+def check_edition_marking(pcb: Path, tag: str, total: str):
+    """Exactly one fixed "/NN" in FRONT silkscreen and no board number anywhere.
 
-    A stale artefact from an earlier run is the realistic failure here: the
-    stray-number check therefore tests against every other serial in the
-    edition, not just one hardcoded sibling.
+    The number itself is hand-written after fabrication; any "01/03"-style
+    text in the artwork would mean the Gerbers are board-specific again.
     """
     src = pcb.read_text()
-    tag = f"{serial}/{total}"
     blocks = re.findall(r'\(gr_text\s+"([^"]*)"(.*?)\n\t\)', src, re.S)
-    front = any(t == tag and "F." in b for (t, b) in blocks)
-    back = any(t == tag and "B.SilkS" in b for (t, b) in blocks)
-    # the front serial is gold: copper + mask, so it appears on F.Cu/F.Mask
-    check(f"{serial}: serial {tag} on the front", front)
-    check(f"{serial}: serial {tag} on the back", back)
-    strays = sorted({t for (t, _) in blocks
-                     for other in all_serials if other != serial
-                     and t == f"{other}/{total}"})
-    check(f"{serial}: no stray serial of another board", not strays,
-          ", ".join(strays) if strays else f"checked {len(all_serials) - 1} others")
+    label = f"/{total}"
+    fronts = [b for (t, b) in blocks if t == label and '"F.SilkS"' in b]
+    check(f"{tag}: '{label}' exactly once in F.Silkscreen", len(fronts) == 1,
+          f"{len(fronts)} found")
+    other = [(t, b) for (t, b) in blocks if t == label and '"F.SilkS"' not in b]
+    check(f"{tag}: '{label}' on no other layer", not other,
+          ", ".join(re.findall(r'\(layer "([^"]+)"', b)[0] for (_, b) in other))
+    numbered = sorted({t for (t, _) in blocks if re.fullmatch(r"\d+\s*/\s*\d+", t)})
+    check(f"{tag}: no board-specific number in the artwork", not numbered,
+          ", ".join(numbered) or "none")
+    if fronts:
+        m = re.search(r"\(size ([\d.]+) ([\d.]+)\)", fronts[0])
+        th = re.search(r"\(thickness ([\d.]+)\)", fronts[0])
+        h = float(m.group(2)) if m else 0
+        w = float(th.group(1)) if th else 0
+        check(f"{tag}: '{label}' height 1.5-2.0 mm", 1.5 <= h <= 2.0, f"{h} mm")
+        check(f"{tag}: '{label}' stroke >= 0.15 mm", w >= 0.15, f"{w} mm")
     for needle in ("NEMOTRON 3.5", "GTC BERLIN 2026", "ZETTEL"):
-        check(f"{serial}: text '{needle}' present",
+        check(f"{tag}: text '{needle}' present",
               any(needle in t for (t, _) in blocks))
+
+
+def check_number_field(out: Path, tag: str, stats: dict):
+    """The write-in field is measured on the exported Gerbers: no silk, no
+    copper, no mask opening (i.e. no exposed ENIG), no drill inside, and a
+    clear margin around it. Size >= 8 x 4 mm."""
+    sys.path.insert(0, str(Path(__file__).parent))
+    import gerber_raster as R
+    nf = stats["number_field"]
+    x0, y0, x1, y1 = nf["field_mm"]
+    w, h = x1 - x0, y1 - y0
+    check(f"{tag}: number field >= 8 x 4 mm", w >= 8.0 and h >= 4.0,
+          f"{w:.2f} x {h:.2f} mm")
+    gdir = out / "gerbers"
+    dp = 20
+    layers = R.load_layers(gdir, out / "verification" / ".raster", dp)
+    c = nf["clear_margin_mm"]
+
+    def win(img, m):
+        a, b = R.to_px(x0 - m, y0 - m, dp)
+        cc, d = R.to_px(x1 + m, y1 + m, dp)
+        return img[b:d, a:cc]
+
+    for layer, m, what in (("F.Silk", 0.0, "silkscreen"),
+                           ("F.Cu", c, "copper"),
+                           ("F.Mask", c, "mask opening / exposed ENIG")):
+        n = int(win(layers[layer], m).sum())
+        check(f"{tag}: no {what} in number field"
+              + (f" (+{c} mm margin)" if m else ""), n == 0,
+              f"{n / dp ** 2:.3f} mm² found")
+    # Back copper behind the field (the QR plate) is reported, not failed:
+    # 1.6 mm FR-4 plus opaque matte-black mask hide it completely, and with
+    # no F.Cu under the field the writing surface stays flat.
+    nb = int(win(layers["B.Cu"], 0.0).sum()) / dp ** 2
+    print(f"[INFO] {tag}: back copper behind the field: {nb:.1f} mm² "
+          f"(QR plate on the reverse; not visible from the front)")
+    holes = [(x, y, d) for f in gdir.glob("*.drl") for (x, y, d) in R.read_drill(f)
+             if x0 - c - d / 2 <= x <= x1 + c + d / 2 and y0 - c - d / 2 <= y <= y1 + c + d / 2]
+    check(f"{tag}: no drilled hole in/near number field", not holes, f"{len(holes)}")
+    lx0, _, lx1, _ = nf["label_bbox_mm"]
+    gap = lx0 - x1
+    check(f"{tag}: '/{stats['total']}' sits right after the field (0.3-1.5 mm)",
+          0.3 <= gap <= 1.5, f"gap {gap:.2f} mm")
+
+
+def check_gerber_drc(out: Path, tag: str):
+    for rule in (6, 4):
+        rep = out / f"DRC_{rule}MIL_REPORT.txt"
+        body = rep.read_text() if rep.exists() else ""
+        check(f"{tag}: Gerber DRC at {rule} mil passes", "RESULT: PASS" in body,
+              rep.name if body else "missing")
+    check(f"{tag}: same-net clearance report present",
+          (out / "SAME_NET_CLEARANCE_REPORT.txt").exists())
 
 
 def check_drc(report: Path, serial: str):
@@ -255,62 +315,69 @@ def check_drc(report: Path, serial: str):
           f"{fp_err.group(1) if fp_err else '?'} footprint errors")
 
 
-def discover_boards(out: Path):
-    """Find which boards this package actually contains.
+ZIP_NAME = "ZETTEL3090_PCBWAY_STANDARD.zip"
+ZIP_MEMBERS = [f"ZETTEL3090-{s}" for s in (
+    "F_Cu.gbr", "B_Cu.gbr", "F_Mask.gbr", "B_Mask.gbr", "F_Silkscreen.gbr",
+    "B_Silkscreen.gbr", "Edge_Cuts.gbr", "PTH.drl", "NPTH.drl", "job.gbrjob")]
 
-    Hardcoding ("01", "02") made the verifier silently ignore a third board:
-    it would pass while board 03 went unchecked. The directory names carry
-    both the serial and the edition size, so they are the source of truth.
-    """
-    boards = []
-    for d in sorted(out.glob("board_*_of_*")):
-        m = re.fullmatch(r"board_(\d+)_of_(\d+)", d.name)
-        if m:
-            boards.append((m.group(1), m.group(2)))
-    return boards
+
+def check_single_design(out: Path, tag: str):
+    """Exactly one design: one PCB, one Gerber set, one ZIP — nothing that a
+    fab could read as a second design."""
+    import zipfile
+    pcbs = sorted(p.name for p in out.rglob("*.kicad_pcb"))
+    check(f"{tag}: exactly one KiCad board in the package", len(pcbs) == 1,
+          ", ".join(pcbs))
+    zips = sorted(p.name for p in out.rglob("*.zip"))
+    check(f"{tag}: exactly one fab ZIP ({ZIP_NAME})", zips == [ZIP_NAME],
+          ", ".join(zips))
+    edges = list(out.rglob("*-Edge_Cuts.gbr"))
+    check(f"{tag}: exactly one Gerber set", len(edges) == 1, f"{len(edges)} Edge.Cuts files")
+    check(f"{tag}: no per-board directories", not list(out.glob("board_*")))
+    zf = out / ZIP_NAME
+    if zf.exists():
+        names = sorted(zipfile.ZipFile(zf).namelist())
+        check(f"{tag}: ZIP holds exactly the 10 fab files", names == sorted(ZIP_MEMBERS),
+              ", ".join(names))
+        edge_in_zip = [n for n in names if "Edge_Cuts" in n]
+        check(f"{tag}: ZIP has one outline (no panel / multi-design)",
+              len(edge_in_zip) == 1)
+        bad = [n for n in names if "drl_map" in n]
+        check(f"{tag}: no drill map in ZIP", not bad, ", ".join(bad))
 
 
 def main():
     out = Path(sys.argv[1])
-    print("ZETTEL3090 — production verification")
+    tag = "ZETTEL3090"
+    print("ZETTEL3090 — production verification (single design)")
     print("=" * 60)
 
-    boards = discover_boards(out)
-    if not check("package contains at least one board", bool(boards),
-                 ", ".join(s for (s, _) in boards) or "no board_* directories"):
-        sys.exit(1)
-    totals = {t for (_, t) in boards}
-    check("all boards agree on the edition size", len(totals) == 1,
-          ", ".join(sorted(totals)))
-    total = boards[0][1]
-    check(f"board count matches the printed edition size /{total}",
-          len(boards) == int(total),
-          f"{len(boards)} boards, marking says {int(total)}")
-    all_serials = [s for (s, _) in boards]
+    gdir = out / "gerbers"
+    pcb = out / "source" / "ZETTEL3090.kicad_pcb"
+    stats = json.loads((out / "verification" / "board_stats.json").read_text())
+    total = stats["total"]
 
-    for serial in all_serials:
-        print(f"\n--- board {serial}/{total} " + "-" * 40)
-        gdir = out / f"board_{serial}_of_{total}" / "gerbers"
-        pcb = out / "source" / f"ZETTEL3090_{serial}.kicad_pcb"
-        stats = json.loads((out / "verification" /
-                            f"board_{serial}_stats.json").read_text())
-
-        check_layers(gdir, serial)
-        check_outline(gdir, serial)
-        check_drc(out / "verification" / f"drc_{serial}.txt", serial)
-        check_qr_keepout(gdir, serial, stats["qr"])
-        check_qr_scan(out / "preview" / f"board_{serial}_back.png", serial)
-        check_render_gold(out / "preview" / f"board_{serial}_front.png",
-                          serial, "front")
-        check_render_gold(out / "preview" / f"board_{serial}_back.png",
-                          serial, "back")
-        check_back_text_orientation(pcb, serial)
-        check_serial_text(pcb, serial, total, all_serials)
-        zipf = (out / f"board_{serial}_of_{total}" /
-                f"ZETTEL3090_{serial}_of_{total}_gerbers.zip")
-        check(f"{serial}: gerber zip exists", zipf.exists() and
-              zipf.stat().st_size > 5000,
-              f"{zipf.stat().st_size // 1024} KB" if zipf.exists() else "missing")
+    check_single_design(out, tag)
+    check_layers(gdir, tag)
+    check_outline(gdir, tag)
+    check_drc(out / "verification" / "kicad_drc.txt", tag)
+    check_gerber_drc(out, tag)
+    check_qr_keepout(gdir, tag, stats["qr"])
+    check_qr_scan(out / "preview" / "back.png", tag)
+    check_render_gold(out / "preview" / "front.png", tag, "front")
+    check_render_gold(out / "preview" / "back.png", tag, "back")
+    check_back_text_orientation(pcb, tag)
+    check_edition_marking(pcb, tag, total)
+    check_number_field(out, tag, stats)
+    for f in ("PCBWAY_ORDER_SETTINGS.md", "PCBWAY_MANUFACTURING_NOTES.md",
+              "preview/front.png", "preview/back.png", "preview/number_field_detail.png",
+              "preview/gerber_front.png", "preview/gerber_back.png"):
+        check(f"{tag}: deliverable {f}", (out / f).exists())
+    settings = (out / "PCBWAY_ORDER_SETTINGS.md")
+    if settings.exists():
+        s = settings.read_text()
+        check(f"{tag}: order settings say Different Designs: 1",
+              re.search(r"Different Designs\s*\|\s*\**1\**\s*\|", s) is not None)
 
     passed = sum(1 for (_, ok, _) in results if ok)
     total = len(results)

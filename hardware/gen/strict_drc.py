@@ -42,23 +42,31 @@ COSMETIC = {
 
 def run(pcb: Path) -> "tuple[Counter, str]":
     with tempfile.TemporaryDirectory() as td:
-        # a project WITHOUT severity overrides: KiCad falls back to defaults
+        # a project WITHOUT severity overrides: KiCad falls back to defaults.
+        # Rules = the ordered 6/6 mil process. The netclass clearance must be
+        # set too: every copper island carries its own net, so KiCad's
+        # clearance check is live, and without a netclass it would use its
+        # built-in 0.2 mm default instead of the process value.
         pro = Path(td) / (pcb.stem + ".kicad_pro")
         pcb_copy = Path(td) / pcb.name
         pcb_copy.write_bytes(pcb.read_bytes())
         pro.write_text(json.dumps({
             "board": {"design_settings": {"rules": {
-                "min_clearance": 0.15,
-                "min_copper_edge_clearance": 0.4,
+                "min_clearance": 0.1524,
+                "min_copper_edge_clearance": 0.3,
                 "min_hole_clearance": 0.25,
                 "min_hole_to_hole": 0.25,
                 "min_text_height": 0.8,
                 "min_text_thickness": 0.15,
                 "min_through_hole_diameter": 0.3,
-                "min_track_width": 0.15,
-                "min_via_annular_width": 0.1,
-                "min_via_diameter": 0.45,
+                "min_track_width": 0.1524,
+                "min_via_annular_width": 0.15,
+                "min_via_diameter": 0.6,
             }, "meta": {"version": 2}}},
+            "net_settings": {"classes": [{
+                "name": "Default", "clearance": 0.1524, "track_width": 0.16,
+                "via_diameter": 0.6, "via_drill": 0.3,
+            }], "meta": {"version": 3}},
             "meta": {"filename": pro.name, "version": 3},
         }))
         rpt = Path(td) / "drc.txt"

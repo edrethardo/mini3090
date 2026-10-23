@@ -15,7 +15,7 @@ import math
 
 import pcbnew
 
-from kicadlib import GOLD_BLEED, circle, gold_poly, gold_stroke, polyline
+from kicadlib import GOLD_BLEED, circle, gold_poly, gold_stroke, merge_gold, polyline
 from layout import SKY_BASE
 
 TRACE = 0.22        # nominal skyline stroke width
@@ -355,14 +355,29 @@ def oberbaum_hint(board, x0, x1, h=3.2):
 # composition
 # --------------------------------------------------------------------------
 
-def draw_skyline(board, x0, x1):
+def draw_skyline(board, x0, x1, min_gap=0.2):
     """Place the landmarks across [x0, x1]. No mountains — a city only.
 
     Slots are explicit and non-overlapping; heights are staged so the
     Fernsehturm dominates, the Gate and the Dom form the mid-ground, and low
     blocks fill the flanks. Positions are given as fractions of the band so the
     composition survives a width change.
+
+    The strokes are finally fused into one copper shape (`merge_gold`): window
+    rungs that stop just short of a wall would otherwise leave laminate
+    slivers narrower than the fab can etch.
     """
+    # SWIG hands out a fresh proxy per call, so id() is not an identity; the
+    # item's UUID is
+    before = {d.m_Uuid.AsString() for d in board.GetDrawings()}
+    _compose(board, x0, x1)
+    new = [d for d in board.GetDrawings()
+           if d.m_Uuid.AsString() not in before
+           and d.GetLayer() in (pcbnew.B_Cu, pcbnew.B_Mask)]
+    merge_gold(board, True, new, min_gap)
+
+
+def _compose(board, x0, x1):
     w = x1 - x0
 
     def at(frac):

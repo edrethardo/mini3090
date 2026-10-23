@@ -13,8 +13,8 @@ import random
 import pcbnew
 
 from kicadlib import (
-    MM, V, arc, circle, gold_rect, gold_stroke, new_fp, poly, polyline,
-    rect, rect_c, seg, size, smd_pad, track, track_path, via,
+    MIN_SPACE, MIN_TRACK, MM, V, arc, circle, gold_rect, gold_stroke, new_fp,
+    poly, polyline, rect, rect_c, seg, size, smd_pad, track, track_path, via,
 )
 
 CU = {False: pcbnew.F_Cu, True: pcbnew.B_Cu}
@@ -455,53 +455,75 @@ def pad_ring(board, cx, cy, r, count, d=0.5, back=False, ref="FR", arcs=None):
 # --------------------------------------------------------------------------
 
 def diff_bus(board, layer, x0, y0, x1, y1, pairs, spacing, width=0.14,
-             gap=0.16, wiggle=0.0, horizontal=True, rng=None):
-    """A bundle of differential-pair style traces with serpentine tuning."""
+             gap=0.16, wiggle=0.0, horizontal=True, rng=None, guarded=True):
+    """A bundle of differential-pair style traces with serpentine tuning.
+
+    `gap` (within a pair) and `spacing` (pair to pair) are centre-to-centre
+    and are raised to what the fab can etch at MIN_TRACK / MIN_SPACE. All
+    tracks of one bus share the same bends, as a length-tuned bus does, so
+    they stay parallel. On a slanted bend a vertical offset s shrinks to
+    s * cos(slope); the offsets are divided by that cosine so the
+    perpendicular gap never drops below MIN_SPACE.
+    """
     rng = rng or random
-    for i in range(pairs):
+    width = max(width, MIN_TRACK)
+    ramp = 0.6                                    # horizontal run of a bend
+    cos_min = 1.0 / math.hypot(1.0, wiggle / ramp) if wiggle else 1.0
+    pitch = (width + MIN_SPACE) / cos_min
+    gap = max(gap, pitch)
+    spacing = max(spacing, gap + pitch)
+    with track_batch():
         if horizontal:
-            base = y0 + i * spacing
-            if base > y1:
-                break
-            for s in (0, gap):
-                pts = [(x0, base + s)]
-                if wiggle:
-                    steps = max(2, int((x1 - x0) / 2.4))
-                    for k in range(1, steps):
-                        xx = x0 + (x1 - x0) * k / steps
-                        dy = wiggle * (1 if k % 2 else -1) * rng.uniform(0.5, 1.0)
-                        pts += [(xx - 0.5, base + s), (xx - 0.2, base + s + dy),
-                                (xx + 0.2, base + s + dy), (xx + 0.5, base + s)]
-                pts.append((x1, base + s))
-                safe_track_path(board, layer, pts, width)
+            bends = []
+            if wiggle:
+                steps = max(2, int((x1 - x0) / 2.4))
+                for k in range(1, steps):
+                    xx = x0 + (x1 - x0) * k / steps
+                    dy = wiggle * (1 if k % 2 else -1) * rng.uniform(0.5, 1.0)
+                    bends.append((xx, dy))
+            for i in range(pairs):
+                base = y0 + i * spacing
+                if base > y1:
+                    break
+                for s in (0, gap):
+                    y = base + s
+                    pts = [(x0, y)]
+                    for (xx, dy) in bends:
+                        pts += [(xx - 0.2 - ramp, y), (xx - 0.2, y + dy),
+                                (xx + 0.2, y + dy), (xx + 0.2 + ramp, y)]
+                    pts.append((x1, y))
+                    safe_track_path(board, layer, pts, width, guarded=guarded)
         else:
-            base = x0 + i * spacing
-            if base > x1:
-                break
-            for s in (0, gap):
-                safe_track_path(board, layer, [(base + s, y0), (base + s, y1)], width)
+            for i in range(pairs):
+                base = x0 + i * spacing
+                if base > x1:
+                    break
+                for s in (0, gap):
+                    safe_track_path(board, layer, [(base + s, y0), (base + s, y1)],
+                                    width, guarded=guarded)
 
 
 def fanout(board, layer, cx, cy, half, count, out, width=0.12, side="left"):
     """Escape routing from one edge of a package to a bus channel."""
-    for i in range(count):
-        t = (i + 0.5) / count
-        if side in ("left", "right"):
-            y = cy - half + 2 * half * t
-            sx = cx - half if side == "left" else cx + half
-            ex = sx - out if side == "left" else sx + out
-            mid = sx + (ex - sx) * 0.45
-            safe_track_path(board, layer,
-                            [(sx, y), (mid, y), (ex, cy - half * 0.75 + 1.5 * half * t)],
-                            width)
-        else:
-            x = cx - half + 2 * half * t
-            sy = cy - half if side == "top" else cy + half
-            ey = sy - out if side == "top" else sy + out
-            mid = sy + (ey - sy) * 0.45
-            safe_track_path(board, layer,
-                            [(x, sy), (x, mid), (cx - half * 0.75 + 1.5 * half * t, ey)],
-                            width)
+    with track_batch():
+        for i in range(count):
+            t = (i + 0.5) / count
+            if side in ("left", "right"):
+                y = cy - half + 2 * half * t
+                sx = cx - half if side == "left" else cx + half
+                ex = sx - out if side == "left" else sx + out
+                mid = sx + (ex - sx) * 0.45
+                safe_track_path(board, layer,
+                                [(sx, y), (mid, y), (ex, cy - half * 0.75 + 1.5 * half * t)],
+                                width)
+            else:
+                x = cx - half + 2 * half * t
+                sy = cy - half if side == "top" else cy + half
+                ey = sy - out if side == "top" else sy + out
+                mid = sy + (ey - sy) * 0.45
+                safe_track_path(board, layer,
+                                [(x, sy), (x, mid), (cx - half * 0.75 + 1.5 * half * t, ey)],
+                                width)
 
 
 def copper_pour(board, layer, pts, net=None):
@@ -510,41 +532,91 @@ def copper_pour(board, layer, pts, net=None):
     return poly(board, layer, pts)
 
 
-def safe_track(board, layer, a, b, width, back=None):
-    """A track that is clipped to the copper-safe board area.
+# Reservations of the tracks drawn inside a `track_batch()`. A bundle's own
+# tracks are spaced by construction; if each one claimed its space at once,
+# the next segment of the SAME path (which touches it) and the parallel
+# neighbour would both be refused. They are committed when the bundle ends.
+_PENDING = []
+_BATCH = [0]
 
-    The outline is stepped, so a long horizontal bus drawn between two x
-    coordinates will run off the board near the notches. Rather than
-    hand-tuning every bus, the path is sampled and only the runs that lie
-    fully inside are emitted.
+
+class track_batch:
+    def __enter__(self):
+        _BATCH[0] += 1
+        return self
+
+    def __exit__(self, *exc):
+        _BATCH[0] -= 1
+        if _BATCH[0] == 0:
+            for args in _PENDING:
+                reserve(*args)
+            _PENDING.clear()
+        return False
+
+
+_SAMPLE = 0.1        # mm between occupancy probes along a track
+
+
+def _free_for_track(x, y, width, back):
+    return (inside_board(x, y, width + 0.1, width + 0.1)
+            and area_free(x, y, width, width, back, margin=MIN_SPACE / 2))
+
+
+def safe_track(board, layer, a, b, width, back=None, guarded=True):
+    """A track clipped to where copper may actually go.
+
+    Two things clip it: the copper-safe board area (the outline is stepped, so
+    a long bus runs off the board near the notches) and — when `guarded` —
+    the occupancy map, so decoration routes AROUND packages and earlier
+    traces instead of through their pads. The path is sampled every 0.1 mm
+    and only the runs that are entirely free are emitted.
+
+    The emitted copper is then claimed (immediately, or at the end of the
+    enclosing `track_batch`) so vias and filler placed later keep clear of it.
     """
     if back is None:
         back = pcbnew.IsBackLayer(layer)
+    width = max(width, MIN_TRACK)
     x0, y0 = a
     x1, y1 = b
     length = math.hypot(x1 - x0, y1 - y0)
-    steps = max(2, int(length / 0.25))
+    steps = max(2, int(math.ceil(length / _SAMPLE)))
+    ok = lambda x, y: (_free_for_track(x, y, width, back) if guarded
+                       else inside_board(x, y, width + 0.1, width + 0.1))
     run = []
     out = []
     for i in range(steps + 1):
         t = i / steps
         x = x0 + (x1 - x0) * t
         y = y0 + (y1 - y0) * t
-        if inside_board(x, y, width + 0.1, width + 0.1):
+        if ok(x, y):
             run.append((x, y))
         else:
-            if len(run) >= 2:
+            if len(run) >= 3:
                 out.append(track(board, layer, run[0], run[-1], width))
             run = []
-    if len(run) >= 2:
+    if len(run) >= 3:
         out.append(track(board, layer, run[0], run[-1], width))
+    for t in out:
+        s, e = t.GetStart(), t.GetEnd()
+        sx, sy, ex, ey = s.x / 1e6, s.y / 1e6, e.x / 1e6, e.y / 1e6
+        n = max(1, int(math.ceil(math.hypot(ex - sx, ey - sy) / _SAMPLE)))
+        for k in range(n + 1):
+            args = (sx + (ex - sx) * k / n, sy + (ey - sy) * k / n,
+                    width, width, back, MIN_SPACE / 2)
+            if _BATCH[0]:
+                _PENDING.append(args)
+            else:
+                reserve(*args)
     return out
 
 
-def safe_track_path(board, layer, pts, width):
+def safe_track_path(board, layer, pts, width, guarded=True):
     out = []
-    for i in range(len(pts) - 1):
-        out += safe_track(board, layer, pts[i], pts[i + 1], width)
+    with track_batch():
+        for i in range(len(pts) - 1):
+            out += safe_track(board, layer, pts[i], pts[i + 1], width,
+                              guarded=guarded)
     return out
 
 
@@ -555,14 +627,15 @@ def hatched_block(board, layer, x0, y0, x1, y1, pitch=0.5, width=0.18,
     dx, dy = math.cos(a), math.sin(a)
     span = (x1 - x0) + (y1 - y0)
     n = int(span / pitch)
-    for i in range(-n, n):
-        c = i * pitch
-        # line: p = (x0,y0) + c*normal + t*dir
-        nx, ny = -dy, dx
-        px, py = x0 + c * nx, y0 + c * ny
-        pts = _clip_line(px, py, dx, dy, x0, y0, x1, y1)
-        if pts:
-            safe_track(board, layer, pts[0], pts[1], width)
+    with track_batch():
+        for i in range(-n, n):
+            c = i * pitch
+            # line: p = (x0,y0) + c*normal + t*dir
+            nx, ny = -dy, dx
+            px, py = x0 + c * nx, y0 + c * ny
+            pts = _clip_line(px, py, dx, dy, x0, y0, x1, y1)
+            if pts:
+                safe_track(board, layer, pts[0], pts[1], width)
 
 
 def _clip_line(px, py, dx, dy, x0, y0, x1, y1):

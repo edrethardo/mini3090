@@ -9,9 +9,12 @@ das Projekt, das lokal mit NVIDIA Nemotron 3.5 auf einer RTX 3090 lief.
 
     RTX 3090 → Nemotron 3.5 → Zettel → GTC Berlin 2026
 
-Drei physisch identische Platinen, `01/03`, `02/03` und `03/03`, jeweils auf
-Vorder- und Rückseite nummeriert. Die Auflagengröße steht an genau einer
-Stelle — `SERIALS` in `hardware/gen/release.sh`.
+**Ein Design, ein Gerber-Satz.** Alle Platinen sind identisch; vorne steht
+nur `/03` im weißen Bestückungsdruck, davor ein freies 10 × 5 mm-Feld aus
+mattschwarzem Lötstopplack. Die Nummer (`01`, `02`, `03`) wird nach der
+Fertigung von Hand mit Lackstift eingetragen. Bei PCBWay: Different Designs 1.
+Die Auflagengröße steht an genau einer Stelle — `TOTAL` in
+`hardware/gen/release.sh`.
 
 ## Das Wichtigste
 
@@ -30,28 +33,41 @@ steht.
 
 ## Bauen
 
+Voraussetzungen:
+
+- **KiCad 9** mit `kicad-cli` und den `pcbnew`-Python-Bindings
+  (Ubuntu/Debian: `sudo add-apt-repository ppa:kicad/kicad-9.0-releases &&
+  sudo apt install kicad`; andere Systeme: [kicad.org/download](https://www.kicad.org/download/))
+- `python3` mit `venv`, `bash`, `zip`
+
 ```bash
-./hardware/gen/release.sh          # -> ZETTEL3090_FINAL/
+git clone https://github.com/edrethardo/mini3090.git
+cd mini3090
+./setup.sh                    # einmalig: .venv mit den Python-Abhängigkeiten
+./hardware/gen/release.sh     # -> ZETTEL3090_FINAL/
 ```
 
-Voraussetzungen: KiCad 9 (`kicad-cli` + `pcbnew`-Python-Bindings) sowie das
-venv unter `.venv` (segno, opencv-python-headless, numpy).
+`setup.sh` sucht das Python, mit dem KiCad installiert wurde (das einzige, das
+`pcbnew` importieren kann), legt damit `.venv` mit `--system-site-packages` an
+und installiert `requirements.txt`. Liegt KiCads Python woanders:
+`KICAD_PYTHON=/pfad/zu/python3 ./setup.sh`. Die Skripte funktionieren aus jedem
+Checkout-Verzeichnis; mit `PYTHON=...` lässt sich ein anderer Interpreter setzen.
 
-```bash
-python3 -m venv --system-site-packages .venv   # --system-site-packages: pcbnew
-.venv/bin/pip install segno opencv-python-headless numpy pillow
-```
+Getestet mit KiCad 9.0.9 unter Ubuntu 24.04. macOS und Windows sind nicht getestet.
 
 Für eine schnelle Design-Iteration ohne den vollen Export:
 
 ```bash
-./hardware/gen/iterate.sh /tmp/z   # baut 01, rendert beide Seiten, prüft den QR
+./hardware/gen/iterate.sh     # -> build/iterate/: Board, beide Seiten gerendert, QR geprüft
 ```
 
 ## Ergebnis
 
-`ZETTEL3090_FINAL/` — Quellen, drei Gerber-Pakete, Vorschaubilder,
-Prüfprotokolle und `ORDER_README.md` mit den exakten Herstelleroptionen.
+`ZETTEL3090_FINAL/` — `ZETTEL3090_PCBWAY_STANDARD.zip` (die einzige
+Fertigungsdatei), KiCad-Quellen, `PCBWAY_ORDER_SETTINGS.md`,
+`PCBWAY_MANUFACTURING_NOTES.md`, `DRC_6MIL_REPORT.txt`, `DRC_4MIL_REPORT.txt`,
+`SAME_NET_CLEARANCE_REPORT.txt`, Renders, Gerber-Ansichten, Detailansicht des
+Nummernfeldes und `verification/REPORT.txt`.
 
 ## Aufbau des Generators
 
@@ -66,8 +82,13 @@ hardware/gen/
   build.py       Setzt das Board zusammen
   stackup.py     Schreibt Farben/Oberfläche in die Board-Datei
   project.py     .kicad_pro mit DRC-Severities und Netzklasse
+  clearance.py   Kupfer-Abstände ohne Netzliste: Inseln, Beinahe-Kontakte
   strict_drc.py  DRC OHNE Unterdrückungen — bricht bei echten Fehlern ab
+  gerber_raster.py / gerber_drc.py / gerber_report.py
+                 Geometrische DRC auf den exportierten Gerbern (6/4 mil)
+  gerber_views.py  Gerber-Ansichten + Detail des Nummernfeldes
   verify.py      Prüft die EXPORTIERTEN Daten (nicht die Absicht)
+  docs/          PCBWay-Bestellwerte und Fertigungshinweise
   release.sh     Der vollständige Produktionslauf
   iterate.sh     Kurzer Design-Loop
 ```
@@ -96,6 +117,10 @@ Damit diese Liste nicht unbemerkt wächst und echte Fehler verdeckt, läuft
 `strict_drc.py` denselben Check **ohne** Unterdrückungen und bricht ab, sobald
 eine Regel verletzt wird, die tatsächliche Fertigbarkeit beschreibt —
 Abstände, Bohrungen, Kantenabstand, Leiterbahnbreite, Restring, Schrifthöhe.
+
+## Lizenz
+
+[MIT](LICENSE) — Generator, Skripte und Doku.
 
 ## Rechtliches
 

@@ -65,6 +65,22 @@ BACK_MEM = [
 QUIET_X0, QUIET_X1 = 82.5, 108.5
 QUIET_Y0, QUIET_Y1 = 14.0, 43.0
 
+# Edition marking. Every board is made from ONE Gerber set; only "/03" is
+# printed. The two-digit number is written by hand after fabrication into a
+# blank field of bare matt-black solder mask directly in front of it:
+#
+#     [          ] /03      ->   01/03, 02/03, 03/03
+#
+# Field: no silkscreen, no copper, no mask opening inside, and a clear margin
+# around it. Its size is the preferred 10 x 5 mm from the brief.
+EDITION = "03"
+NUM_FIELD_W, NUM_FIELD_H = 10.0, 5.0
+NUM_FIELD_CY = 32.1
+NUM_GAP = 0.6                 # field edge -> left edge of "/03"
+NUM_TEXT_H = 2.0              # "/03" character height (brief: 1.5 - 2.0 mm)
+NUM_TEXT_W = 0.30             # stroke width (brief: >= 0.15 mm)
+NUM_FIELD_CLEAR = 0.8         # nothing within this margin around the field
+
 # Hard keepout for the QR code on the back side. Nothing but the QR artwork
 # may be placed inside this rectangle.
 QR_KEEPOUT = (83.0, 11.5, 109.0, 37.5)   # x0, y0, x1, y1

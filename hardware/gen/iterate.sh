@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 # Iteration helper: rebuild one board, render both sides, crop review images.
 #
-#   ./iterate.sh [OUTDIR] [SERIAL] [TOTAL]
+#   ./iterate.sh [OUTDIR] [TOTAL]     default OUTDIR: <repo>/build/iterate
 set -euo pipefail
-ROOT=/data/projects/mini3090
-PY=$ROOT/.venv/bin/python
-GEN=$ROOT/hardware/gen
-OUT=${1:-/tmp/z}
-SERIAL=${2:-01}
-TOTAL=${3:-03}
+source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
+OUT=${1:-$ROOT/build/iterate}
+TOTAL=${2:-03}
 mkdir -p "$OUT"
 
-"$PY" "$GEN/build.py" --serial "$SERIAL" --total "$TOTAL" \
+"$PY" "$GEN/build.py" --total "$TOTAL" \
     --out "$OUT/t.kicad_pcb" --info "$OUT/stats.json" >/dev/null
 "$PY" "$GEN/stackup.py" "$OUT/t.kicad_pcb" >/dev/null
 
